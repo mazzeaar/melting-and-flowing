@@ -8,5 +8,5 @@ set(EXPORT_COMPILE_COMMANDS ON)
 add_subdirectory(external/eigen EXCLUDE_FROM_ALL)
 add_subdirectory(external/polyscope)
 
-add_executable(fluid_sim main.cpp)
+add_executable(fluid_sim src/main.cpp)
 target_link_libraries(fluid_sim PRIVATE Eigen3::Eigen polyscope)
