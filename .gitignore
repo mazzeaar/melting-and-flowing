@@ -63,4 +63,4 @@ build.ninja
 
 # Polyscope / ImGui
 .polyscope.ini
-.imgui.ini
+imgui.ini
