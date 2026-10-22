@@ -1,0 +1,62 @@
+# ------------------------------
+# Build directories
+# ------------------------------
+/build/
+/build-*/
+/cmake-build-*/
+/out/
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+compile_commands.json
+install_manifest.txt
+build.ninja
+.ninja_deps
+.ninja_log
+
+# ------------------------------
+# Compiled binaries / libraries
+# ------------------------------
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.dSYM/
+*.pcm
+*.gch
+
+# ------------------------------
+# Editors / IDEs
+# ------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ------------------------------
+# Temporary / generated files
+# ------------------------------
+*.log
+*.tmp
+*.bak
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+
+# ------------------------------
+# Simulation output
+# ------------------------------
+/output/
+/results/
+/frames/
+/screenshots/
