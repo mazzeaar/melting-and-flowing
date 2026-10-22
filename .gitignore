@@ -60,3 +60,7 @@ build.ninja
 /results/
 /frames/
 /screenshots/
+
+# Polyscope / ImGui
+polyscope.ini
+imgui.ini
