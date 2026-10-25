@@ -1,74 +1,98 @@
 #pragma once
 
-#include <cstddef>
-#include <mdspan>
-#include <span>
-#include <type_traits>
-#include <vector>
+#include <format>
+#include <print>
 
-#include "geometry.hpp"
+#include "core.hpp"
+#include "interface.hpp"
 
 namespace grid {
 
-namespace detail {
-    template <class From, class To>
-    using copy_const_t =
-        std::conditional_t<std::is_const_v<std::remove_reference_t<From>>, const To, To>;
-}
+struct GridStorage {
+    friend class GridView;
+    Config config;
 
-// owns state/allocates buffers
-struct Storage {
-   private:
-    extents_type                             grid_extents;
-    std::layout_right::mapping<extents_type> grid_mapping;
-    std::size_t                              number_of_cells;
+    // just using flat storage for now
+    // all external memory interactions must only happen through view()
+    std::vector<Config::float_type> flat_storage;
 
-    using storage_type = std::vector<float_type>;
-    storage_type u_field;
-    storage_type v_field;
-    storage_type w_field;
-    storage_type p_field;
-    // add more grids here
+    GridStorage(Config config) : config{config} {
+        constexpr auto n_fields    = std::to_underlying(Field::COUNT);
+        auto           buffer_size = config.grid_mapping.required_span_size();
+        auto           total_size  = n_fields * buffer_size;
 
-    // only access fields through this (inside of Storage)
-    template <Field F> constexpr decltype(auto) field(this auto&& self) {
-        using enum Field;
+        flat_storage = std::vector<Config::float_type>(total_size, 0.0);
+        auto kb      = total_size / (sizeof(Config::float_type) * 1000);
 
-        if constexpr (F == U) {
-            return (self.u_field);
-        } else if constexpr (F == V) {
-            return (self.v_field);
-        } else if constexpr (F == W) {
-            return (self.w_field);
-        } else if constexpr (F == P) {
-            return (self.p_field);
-        } else {
-            static_assert(F == U || F == V || F == W || F == P, "Unsupported field");
+        auto format_extents = [](auto const& ext, int offset = 0) {
+            return std::format("[{}, {}, {}]", ext.extent(0) + offset, ext.extent(1) + offset,
+                               ext.extent(2) + offset);
+        };
+
+        std::println("Initialised FieldStorage:\n"
+                     "  field count: {}\n"
+                     "  allocated: {}kb\n"
+                     "  number of cells: {}\n"
+                     "  extended grid size: {}\n"
+                     "  physical grid size: {}\n",
+                     n_fields, kb, config.grid_mapping.required_span_size(),
+                     format_extents(config.grid_extents), format_extents(config.grid_extents, -1));
+        if (kb > 40'000) {
+            std::println("\n\ncan your L3 really handle {}mb?\n\n", kb / 1000);
         }
     }
 
-   public:
-    Storage(std::size_t nx, std::size_t ny, std::size_t nz)
-        : grid_extents{nx + 1, ny + 1, nz + 1}, grid_mapping{grid_extents},
-          number_of_cells{buffer_size()}, u_field(number_of_cells, 0.0),
-          v_field(number_of_cells, 0.0), w_field(number_of_cells, 0.0),
-          p_field(number_of_cells, 0.0) {}
+    template <Field F> constexpr auto view(this auto&& self) {
+        static constexpr auto field_offset = std::to_underlying(F);
+        auto                  field_size   = self.config.grid_mapping.required_span_size();
 
-    constexpr auto extents() const { return grid_extents; }
-    constexpr auto mapping() const { return grid_mapping; }
-    constexpr auto buffer_size() const -> std::size_t { return mapping().required_span_size(); }
-
-    // flat view
-    template <Field F> constexpr auto flat_view(this auto&& self) {
-        auto& values = self.template field<F>();
-        return std::span{values};
+        using enum Field;
+        if constexpr (std::ranges::contains(std::array{U, V, W, P}, F)) {
+            return FieldInterface<F>{
+                {self.flat_storage.data() + (field_size * field_offset), field_size},
+                self.config,
+            };
+        } else if constexpr (F == Velocities) {
+            return FieldInterface<F>{
+                self.flat_storage.data(),
+                self.config,
+            };
+        } else {
+            static_assert(false, "state? STATE?, hit the road dude, this aint a valid enum");
+        }
     }
 
-    // 3d view, including boundary and placeholder values
-    template <Field F> constexpr auto md_view(this auto&& self) {
-        auto flat = self.template flat_view<F>();
-        return std::mdspan{flat.data(), self.grid_extents};
-    }
+    // maybe this also needs a way to copy in buffers?
+    // problem is: swap does not work due to the combined memory requirement of the 3 velocity
+    // fields
 };
 
+class GridView {
+    GridStorage* storage;
+
+   public:
+    constexpr GridView(GridStorage& s) : storage{&s} {}
+
+    // maybe we should add
+    //   - mapping()
+    //   - extents()
+    //   - other stuff?
+    // here as well idk
+
+    template <Field F> constexpr auto view(this auto&& self) {
+        return self.storage->template view<F>();
+    }
+
+    template <Field F, class T> constexpr auto resize_like(std::vector<T>& buff) {
+        // geometric fields are distributed evenly throughout the grid, hence all the same buffer
+        // size
+        if constexpr (detail::GeometricField<F>) {
+            buff.resize(storage->config.grid_mapping.required_span_size());
+        } else if constexpr (F == Field::Velocities) {
+            buff.resize(3 * storage->config.grid_mapping.required_span_size());
+        } else {
+            static_assert(F != F, "handle your field here, or in detail::GeometricField");
+        }
+    }
+};
 }  // namespace grid

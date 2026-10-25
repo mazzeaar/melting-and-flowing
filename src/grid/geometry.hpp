@@ -1,180 +1,129 @@
 #pragma once
 
+#include <Eigen/Core>
 #include <cassert>
 #include <cstddef>
-#include <mdspan>
-#include <ranges>
-#include <utility>
 
-#ifdef NDEBUG
-#include <exception>
-#include <format>
-#endif
+#include "core.hpp"
 
-namespace grid {
+namespace grid::detail {
+template <Location L> struct Geometry {
+    using float_type = Config::float_type;
 
-using float_type   = double;
-using extents_type = std::dextents<std::size_t, 3>;
+    static consteval auto offset() { return detail::cell_position<L>(); };
 
-enum class Field : std::uint8_t { U, V, W, P, COUNT };
-
-enum class CellType : std::uint8_t {
-    INTERIOR        = 0b0001,
-    PLACEHOLDER     = 0b0010,
-    DIRECT_BOUNDARY = 0b0100,
-    GHOST_BOUNDARY  = 0b1000,
-    BOUNDARY        = DIRECT_BOUNDARY | GHOST_BOUNDARY,
-    ALL             = INTERIOR | PLACEHOLDER | BOUNDARY,
-};
-
-constexpr auto matches(CellType actual, CellType requested) -> bool {
-    return (std::to_underlying(actual) & std::to_underlying(requested)) != 0;
-}
-
-/*
- Default CG coordinate axis according to chatgpt
-      +Y, +j
-       ^
-       |
-       |
-       |
-       O------------> +X, +i
-      /
-     /
-    v
-   +Z, +k (toward viewer)
-*/
-enum class Axis : std::uint8_t { X, Y, Z };
-constexpr auto to_index(Axis ax) { return std::to_underlying(ax); }
-
-namespace detail {
-
-    using Index    = std::array<std::size_t, 3>;
-    using Position = std::array<double, 3>;
-
-    enum class Location : std::uint8_t {
-        CELL,
-        X_FACE,
-        Y_FACE,
-        Z_FACE,
-        XY_EDGE,
-        XZ_EDGE,
-        YZ_EDGE,
-        NODE
-    };
-
-    template <Location L> static constexpr auto offset() -> Position {
-        if constexpr (L == Location::CELL) {
-            return {0.5, 0.5, 0.5};
-        } else if constexpr (L == Location::X_FACE) {
-            return {0.0, 0.5, 0.5};
-        } else if constexpr (L == Location::Y_FACE) {
-            return {0.5, 0.0, 0.5};
-        } else if constexpr (L == Location::Z_FACE) {
-            return {0.5, 0.5, 0.0};
-        } else if constexpr (L == Location::XY_EDGE) {
-            return {0.0, 0.0, 0.5};
-        } else if constexpr (L == Location::XZ_EDGE) {
-            return {0.0, 0.5, 0.0};
-        } else if constexpr (L == Location::YZ_EDGE) {
-            return {0.5, 0.0, 0.0};
-        } else {
-            return {0.0, 0.0, 0.0};
+    [[nodiscard]] static constexpr auto position(std::array<std::size_t, 3> idx,
+                                                 GeometryContext const&     ctx) {
+        static constexpr auto     off = offset();
+        std::array<float_type, 3> out;
+        for (auto i : {0, 1, 2}) {
+            // cell (1,1,1) has its lower physical corner at ctx.lowest_corner
+            out[i] = ctx.lowest_corner[i] +
+                     (static_cast<float_type>(idx[i]) - 1.0 + off[i]) * ctx.cell_size[i];
         }
+        return out;
     }
 
-    template <Location L>
-    concept IsFaceValue = L == Location::X_FACE || L == Location::Y_FACE || L == Location::Z_FACE;
+    // DOES NOT DEPEND ON LOCATION AT ALL!!
+    // index of the cell containing the point
+    [[nodiscard]] static constexpr auto cell(std::span<const double, 3> point,
+                                             GeometryContext const&     ctx)
+        -> std::array<std::size_t, 3> {
+        std::array<std::size_t, 3> out;
+        for (auto i : {0, 1, 2}) {
+            auto const index =
+                std::floor((point[i] - ctx.lowest_corner[i]) / ctx.cell_size[i]) + 1.0;
 
-    template <Location L>
-        requires(IsFaceValue<L>)
-    consteval auto normal_axis() -> Axis {
-        if constexpr (L == Location::X_FACE) {
-            return Axis::X;
-        } else if constexpr (L == Location::Y_FACE) {
-            return Axis::Y;
-        } else {
-            return Axis::Z;
+            assert(std::isfinite(index));
+            assert(index >= 0.0);
+            assert(index < static_cast<float_type>(ctx.extents.extent(i)));
+
+            out[i] = static_cast<std::size_t>(index);
         }
-    }
-
-    template <Field F> struct FieldTraits;
-
-#define SET_TRAIT(F, L)                         \
-    template <> struct FieldTraits<F> {         \
-        static constexpr Location location = L; \
+        return out;
     };
 
-    SET_TRAIT(Field::U, Location::X_FACE);
-    SET_TRAIT(Field::V, Location::Y_FACE);
-    SET_TRAIT(Field::W, Location::Z_FACE);
-    SET_TRAIT(Field::P, Location::CELL);
+    // nearest lowest neighbour
+    // meaning: for any point inside the grid there are 8 values closest to it.
+    //          -> the point is contained in a cube formed by those 8 values
+    // this function returns the lowest index of this cube
+    [[nodiscard]] static constexpr auto min_corner(std::span<const double, 3> point,
+                                                   GeometryContext const&     ctx)
+        -> std::array<std::size_t, 3> {
+        constexpr auto             off = offset();
+        std::array<std::size_t, 3> out;
+        for (auto i : {0, 1, 2}) {
+            auto const index =
+                std::floor((point[i] - ctx.lowest_corner[i]) / ctx.cell_size[i] - off[i]) + 1.0;
 
-#undef SET_TRAIT
+            assert(std::isfinite(index));
+            assert(index >= 0.0);
+            assert(index + 1.0 < static_cast<float_type>(ctx.extents.extent(i)));
 
-    template <Field F> struct FieldGeometry {
-        static constexpr auto location = FieldTraits<F>::location;
+            out[i] = static_cast<std::size_t>(index);
+        }
+        return out;
+    }
 
-        static constexpr auto classify(extents_type extents, Index index) -> CellType {
-            static_assert(
-                F == Field::P || IsFaceValue<location>,
-                "if you can read this, then cell classification for this field type is not "
-                "implemented yet in geometry.hpp classify()");
+    static constexpr auto cell_type(std::array<std::size_t, 3> const& idx,
+                                    GeometryContext const&            ctx) -> CellType {
+        constexpr auto off = offset();
 
-            static constexpr auto axis = std::ranges::iota_view(std::size_t{0}, std::size_t{3});
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+            assert(ctx.extents.extent(axis) >= 3);
+            assert(idx.at(axis) < ctx.extents.extent(axis));
+        }
 
-#ifdef NDEBUG
-            for (auto ax : axis) {
-                if (index[ax] >= extents.extent(ax)) {
-                    throw std::logic_error(
-                        std::format("Out of bounds cell classification for index "
-                                    "({}, {}, {}), with extents ({}, {}, {})",
-                                    index[0], index[1], index[2], extents.extent(0),
-                                    extents.extent(1), extents.extent(2)));
-                }
-            }
-#endif
+        // no early returns, because if we first hit a boundary cell, but later we notice its
+        // actually a placeholder we return the wrong thing.
+        // order is: placeholder > ghost > direct > interior
+        // -> V(Nx, Ny, Nz)
+        //      - first axis: ghost
+        //      - second: placeholder
+        bool is_ghost  = false;
+        bool is_direct = false;
 
-            // pressure: outer layers are placeholders
-            if constexpr (F == Field::P) {
-                for (auto ax : axis) {
-                    if (index[ax] == 0 || index[ax] == extents.extent(ax) - 1) {
-                        return CellType::PLACEHOLDER;
-                    }
-                }
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+            auto const index = idx.at(axis);
+            auto const last  = ctx.extents.extent(axis) - 1;
 
-                return CellType::INTERIOR;
-            }
-
-            // velocities on cell faces
-            if constexpr (IsFaceValue<location>) {
-                static constexpr auto normal = std::to_underlying(normal_axis<location>());
-
-                // unused outer position on the positive normal axis
-                if (index[normal] == extents.extent(normal) - 1) {
+            if constexpr (L == Location::CELL) {
+                // Cell-centered fields have no samples on physical walls.
+                // Their surrounding padding is classified as placeholder.
+                if (index == 0 || index == last) {
                     return CellType::PLACEHOLDER;
                 }
-
-                // ghost layers along tangential axes
-                for (auto ax : axis) {
-                    if (ax == normal) {
-                        continue;
+            } else {
+                if (off.at(axis) == 1.0) {  // location lies on cell boundary along this axis
+                    // the final plane in any direction is unused
+                    if (index == last) {
+                        return CellType::PLACEHOLDER;
                     }
 
-                    if (index[ax] == 0 || index[ax] == extents.extent(ax) - 1) {
-                        return CellType::GHOST_BOUNDARY;
+                    // lies on the physical boundary in this direction
+                    if (index == 0 || index == last - 1) {
+                        is_direct = true;
+                    }
+
+                } else {
+                    // location is centered along this axis
+                    // -> out planes provide ghost values (indirect boundary)
+                    if (index == 0 || index == last) {
+                        is_ghost = true;
                     }
                 }
-
-                // direct boundary values on normal walls
-                if (index[normal] == 0 || index[normal] == extents.extent(normal) - 2) {
-                    return CellType::DIRECT_BOUNDARY;
-                }
-
-                return CellType::INTERIOR;
             }
         }
-    };
 
-}  // namespace detail
-}  // namespace grid
+        if (is_ghost) {
+            return CellType::GHOST_BOUNDARY;
+        }
+
+        if (is_direct) {
+            return CellType::DIRECT_BOUNDARY;
+        }
+
+        return CellType::INTERIOR;
+    }
+};
+}  // namespace grid::detail
