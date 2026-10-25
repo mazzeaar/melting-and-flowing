@@ -18,10 +18,12 @@ concept CellFunctionLike = std::invocable<F, std::size_t, std::size_t, std::size
 
 // cheap to copy/move
 class View {
-    std::shared_ptr<Storage> data;
+    Storage* data;
 
    public:
-    View(std::shared_ptr<Storage>& grid) : data{grid} {}
+    explicit constexpr View(Storage* grid) : data{grid} {}
+
+    constexpr auto buffer_size() const -> std::size_t { return data->buffer_size(); }
 
     template <Field... Fields> constexpr auto get() {
         if constexpr (sizeof...(Fields) == 1) {
@@ -41,7 +43,7 @@ class View {
         return data->mapping()(i, j, k);
     }
 
-    template <Axis Ax> constexpr auto offset() const {
+    template <Axis Ax> constexpr auto flat_offset() const -> int {
         return data->mapping().stride(std::to_underlying(Ax));
     }
 
