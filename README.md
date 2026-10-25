@@ -2,6 +2,12 @@
 
 Our implementation of the 2002 paper [Melting and Flowing](https://faculty.cc.gatech.edu/~turk/my_papers/melt.pdf).
 
+## Setup
+To set up the project you can simply run
+```bash
+./scripts/setup.sh
+```
+
 ## todo
 - user needs ninja, cmake, some cpp23 compiler
 - how to clone/init submodules
