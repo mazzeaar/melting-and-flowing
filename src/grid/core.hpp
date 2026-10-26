@@ -68,7 +68,8 @@ using FieldType = decltype([] {
                   F == Field::P || F == Field::T || F == Field::Velocities) {
         return Config::float_type{};
     } else {
-        static_assert(F != F, "Unhandled field");
+        // assert(false) will always crash...
+        static_assert(F != F, "Unhandled field");  // NOLINT
     }
 }());
 

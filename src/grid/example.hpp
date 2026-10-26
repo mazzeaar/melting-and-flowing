@@ -1,5 +1,6 @@
 #pragma once
 
+// NOLINTBEGIN
 #include <grid/grid.hpp>
 
 namespace grid::example {
@@ -72,3 +73,4 @@ void func() {
     }
 }
 }  // namespace grid::example
+// NOLINTEND

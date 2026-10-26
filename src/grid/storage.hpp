@@ -97,8 +97,10 @@ class GridView {
         } else if constexpr (F == Field::Velocities) {
             buff.resize(3 * storage->config.grid_mapping.required_span_size());
         } else {
-            static_assert(
-                F != F, "handle your field here, or in detail::GeometricField");
+            // assert(false) will always crash...
+            static_assert(F != F,  // NOLINT
+                          "handle your field here, or in "
+                          "detail::GeometricField");
         }
     }
 };

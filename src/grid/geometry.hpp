@@ -15,7 +15,7 @@ template <Location L> struct Geometry {
     [[nodiscard]] static constexpr auto position(std::array<std::size_t, 3> idx,
                                                  const GeometryContext& ctx) {
         static constexpr auto off = offset();
-        std::array<float_type, 3> out;
+        auto out = std::array<float_type, 3>{};
         for (auto i : {0, 1, 2}) {
             // cell (1,1,1) has its lower physical corner at ctx.lowest_corner
             out[i] = ctx.lowest_corner[i] +
@@ -30,7 +30,7 @@ template <Location L> struct Geometry {
     [[nodiscard]] static constexpr auto cell(std::span<const double, 3> point,
                                              const GeometryContext& ctx)
         -> std::array<std::size_t, 3> {
-        std::array<std::size_t, 3> out;
+        auto out = std::array<std::size_t, 3>{};
         for (auto i : {0, 1, 2}) {
             const auto index = std::floor((point[i] - ctx.lowest_corner[i]) /
                                           ctx.cell_size[i]) +
@@ -53,7 +53,7 @@ template <Location L> struct Geometry {
         std::span<const double, 3> point, const GeometryContext& ctx)
         -> std::array<std::size_t, 3> {
         constexpr auto off = offset();
-        std::array<std::size_t, 3> out;
+        auto out = std::array<std::size_t, 3>{};
         for (auto i : {0, 1, 2}) {
             const auto index = std::floor((point[i] - ctx.lowest_corner[i]) /
                                               ctx.cell_size[i] -
