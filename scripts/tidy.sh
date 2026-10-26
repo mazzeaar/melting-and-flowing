@@ -2,7 +2,13 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="${BUILD_DIR:-$ROOT/build/release-apple-clang}"
+
+if [[ $# -ne 1 ]]; then
+    echo "Usage: $0 <build-directory>" >&2
+    exit 1
+fi
+
+BUILD_DIR="$(cd "$ROOT" && realpath "$1")"
 
 command -v clang-tidy >/dev/null || {
     echo "Error: clang-tidy not found" >&2
