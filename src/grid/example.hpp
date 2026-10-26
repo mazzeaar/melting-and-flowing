@@ -1,10 +1,6 @@
 #pragma once
 
-#include <HIToolbox/Lists.h>
-
 #include <grid/grid.hpp>
-
-#include "grid/core.hpp"
 
 namespace grid::example {
 
