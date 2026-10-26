@@ -1,82 +1,63 @@
 ---
 Checks: >
+  -*,
   bugprone-*,
   clang-analyzer-*,
-  cppcoreguidelines-*,
-  misc-*,
-  modernize-*,
-  performance-*, 
+  performance-*,
   portability-*,
-  readability-*,
-  -cppcoreguidelines-avoid-const-or-ref-datamembers,
-  -cppcoreguidelines-avoid-magic-numbers,
-  -cppcoreguidelines-non-private-member-variables-in-classes,
-  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
-  - cppcoreguidelines-pro-bounds-constant-array-index,
-  -misc-definitions-in-headers, 
-  -misc-include-cleaner, 
-  -misc-no-recursion, 
-  -misc-non-private-member-variable-in-classes,
-  -misc-non-private-member-variables-in-classes, 
-  -misc-use-anonymous-namespace, 
-  -misc-use-internal-linkage,
-  -misc-use-internal-linkage,
-  -modernize-avoid-c-arrays, 
-  -modernize-concat-nested-namespaces, 
-  -modernize-loop-convert, 
-  -modernize-pass-by-value, 
-  -modernize-raw-string-literal, 
-  -modernize-use-emplace, 
-  -modernize-use-equals-default, 
-  -modernize-use-equals-delete, 
-  -modernize-use-nodiscard, 
-  -modernize-use-override, 
-  -modernize-use-trailing-return-type, 
-  -performance-inefficient-string-concatenation'
-  -readability-identifier-length,
-  -readability-identifier-naming,
-  -readability-magic-numbers,
-  -readability-named-parameter
+
+  modernize-deprecated-headers,
+  modernize-make-shared,
+  modernize-make-unique,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-bool-literals,
+  modernize-use-default-member-init,
+  modernize-use-equals-default,
+  modernize-use-equals-delete,
+
+  cppcoreguidelines-explicit-virtual-functions,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-pro-type-const-cast,
+  cppcoreguidelines-pro-type-reinterpret-cast,
+  cppcoreguidelines-pro-type-static-cast-downcast,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-virtual-class-destructor,
+
+  misc-const-correctness,
+  misc-misplaced-const,
+  misc-redundant-expression,
+  misc-unconventional-assign-operator,
+
+  readability-braces-around-statements,
+  readability-container-size-empty,
+  readability-duplicate-include,
+  readability-else-after-return,
+  readability-misleading-indentation,
+  readability-redundant-control-flow,
+  readability-redundant-declaration,
+  readability-redundant-member-init,
+  readability-simplify-boolean-expr,
+  readability-static-accessed-through-instance,
+
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-reserved-identifier,
+
+  -performance-avoid-endl,
+  -performance-enum-size,
+  -performance-inefficient-string-concatenation,
 
 WarningsAsErrors: ''
 
 HeaderFilterRegex: '.*'
-
 FormatStyle: file
-
 UseColor: true
-
 SystemHeaders: false
 
 CheckOptions:
   - key: modernize-use-nullptr.NullMacros
     value: 'NULL'
-  - key: modernize-use-nullptr.UseNullptr
-    value: 'true'
 
-  - key: readability-identifier-naming.ClassCase
-    value: CamelCase
-  - key: readability-identifier-naming.FunctionCase
-    value: camelBack
-  - key: readability-identifier-naming.VariableCase
-    value: lower_case
-  - key: readability-identifier-naming.ParameterCase
-    value: lower_case
-
-  - key: readability-identifier-length.MinimumFunctionNameLength
-    value: '1'
-  - key: readability-identifier-length.MinimumVariableNameLength
-    value: '1'
-  - key: readability-identifier-length.MinimumParameterNameLength
-    value: '1'
-
-  - key: cppcoreguidelines-avoid-magic-numbers.IgnoreEnums
-    value: 'true'
-  - key: cppcoreguidelines-special-member-functions.AllowMissingMoveFunctions
-    value: 'false'
-  - key: cppcoreguidelines-pro-type-vararg.CheckPrintf
-    value: 'true'
-  - key: cppcoreguidelines-pro-type-vararg.CheckScanf
-    value: 'true'
-  - key: cppcoreguidelines-pro-type-const-cast.IgnoreMacros
-    value: 'false'
+  - key: readability-braces-around-statements.ShortStatementLines
+    value: '0'
