@@ -48,6 +48,8 @@ Checks: >
   -performance-enum-size,
   -performance-inefficient-string-concatenation,
 
+  -portability-avoid-pragma-once,
+
 WarningsAsErrors: ''
 
 HeaderFilterRegex: '.*'
