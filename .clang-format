@@ -1,36 +1,13 @@
+Language: Cpp
 BasedOnStyle: Google
-
-ColumnLimit: 100
-IndentWidth: 4
-
-SortUsingDeclarations: false
-
-AlignConsecutiveMacros: true
-AlignConsecutiveAssignments: true
-AlignConsecutiveDeclarations: true
-AlignTrailingComments: true
-
-AllowShortBlocksOnASingleLine: false
-
-AlwaysBreakBeforeMultilineStrings: false
-AlwaysBreakTemplateDeclarations: MultiLine
-BreakBeforeTernaryOperators: true
-
-CompactNamespaces: true
-FixNamespaceComments: true
-ConstructorInitializerAllOnOneLineOrOnePerLine: false
-IndentCaseLabels: true
-IndentWrappedFunctionNames: true
-KeepEmptyLinesAtTheStartOfBlocks: false
-MaxEmptyLinesToKeep: 1
-NamespaceIndentation: Inner
-ReflowComments: true
-
-SpaceAfterCStyleCast: true
-SpaceAfterTemplateKeyword: true
-SpaceBeforeAssignmentOperators: true
-SpaceBeforeCpp11BracedList: false
-SpaceBeforeCtorInitializerColon: true
-SpaceBeforeInheritanceColon: true
-SpaceBeforeRangeBasedForLoopColon: true
-SpaceBeforeParens: ControlStatements
+IndentPPDirectives: AfterHash
+IndentCaseLabels: false
+AlwaysBreakTemplateDeclarations: false
+DerivePointerAlignment: false
+AllowShortCaseLabelsOnASingleLine: true
+QualifierAlignment: Left
+AlignConsecutiveShortCaseStatements:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: true
+  AlignCaseColons: false
