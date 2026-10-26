@@ -5,3 +5,5 @@
 #include "interface.hpp"
 #include "interpolation_stencil.hpp"
 #include "storage.hpp"
+
+using GridView = grid::GridView;
