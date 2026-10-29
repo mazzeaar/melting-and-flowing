@@ -25,6 +25,30 @@ template <Location L> struct Geometry {
         return out;
     }
 
+    [[nodiscard]] static constexpr auto contains_point(
+        std::span<const float_type, 3> point, const GeometryContext& ctx)
+        -> bool {
+        constexpr auto off = offset();
+
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+            const auto x = point[axis];
+
+            const auto lo = ctx.lowest_corner[axis] +
+                            (off[axis] - 1.0) * ctx.cell_size[axis];
+
+            const auto hi = ctx.lowest_corner[axis] +
+                            (static_cast<float_type>(ctx.extents.extent(axis)) -
+                             2.0 + off[axis]) *
+                                ctx.cell_size[axis];
+
+            if (!std::isfinite(x) || x < lo || x >= hi) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     // DOES NOT DEPEND ON LOCATION AT ALL!!
     // index of the cell containing the point
     [[nodiscard]] static constexpr auto cell(std::span<const double, 3> point,
