@@ -57,7 +57,7 @@ struct Storage {
             };
         } else if constexpr (F == Velocities) {
             return FieldInterface<F>{
-                self.flat_storage.data(),
+                {self.flat_storage.data(), 3 * field_size},
                 self.config,
             };
         } else {
