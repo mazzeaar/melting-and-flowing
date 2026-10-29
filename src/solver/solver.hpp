@@ -43,7 +43,7 @@ struct Solver {
         auto n_unkowns() const { return nx * ny * nz; }
 
         auto row(std::size_t i, std::size_t j, std::size_t k) const {
-            return i + nx * ((j - 1) + ny * (k - 1));
+            return (i - 1) + nx * ((j - 1) + ny * (k - 1));
         }
     };
 
@@ -71,6 +71,8 @@ struct Solver {
     using float_type = grid::Config::float_type;
 
    private:
+    friend struct PressureTest;
+
     Statistics stats;
     PressureConfig pressure_cfg;
     Eigen::SparseMatrix<float_type> some_solver;

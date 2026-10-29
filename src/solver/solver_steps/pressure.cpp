@@ -71,8 +71,7 @@ void Solver::solve_pressure(Config cfg) {
 
                 // For example when we are on a left edge, we only use 4
                 // pressure values hence we count for this using n_fluid
-                tripletList.emplace_back(
-                    Triplet(r, r, static_cast<double>(n_fluid)));
+                tripletList.emplace_back(r, r, static_cast<double>(n_fluid));
             }
         }
     }
