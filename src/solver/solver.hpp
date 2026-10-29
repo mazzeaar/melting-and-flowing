@@ -46,6 +46,7 @@ struct Solver {
     Statistics stats;
     Eigen::SparseMatrix<float_type> some_solver;
     std::vector<float_type> some_pingpong_buffer;
+    std::vector<float_type> advect_velocity_buffer;
 
    public:
     Solver() = default;
@@ -73,7 +74,7 @@ struct Solver {
 
     // Step 1: Advection and external forces
     // u1 = u_old - dt * (u_old · ∇)u_old + dt * g
-    void advect_velocity(Config cfg) {}
+    void advect_velocity(Config cfg);
 
     // Step 2: Viscous diffusion
     // u2 - dt * nu * ∇²u2 = u1
