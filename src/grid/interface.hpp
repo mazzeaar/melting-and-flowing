@@ -24,6 +24,11 @@ template <Field FieldTag> struct FieldInterface {
     constexpr FieldInterface(std::span<value_type> data_view, Config config)
         : data_view{data_view}, cfg{config}, geo_context{cfg} {}
 
+    constexpr auto wrap(std::span<value_type> other_data) const
+        -> FieldInterface {
+        return {other_data, cfg};
+    }
+
     // flat indexing
     constexpr auto operator[](this auto&& self, std::size_t g)
         -> decltype(auto) {
@@ -68,6 +73,16 @@ template <Field FieldTag> struct FieldInterface {
     constexpr auto flat_offsets() const {
         return std::array{flat_offset<Axis::X>(), flat_offset<Axis::Y>(),
                           flat_offset<Axis::Z>()};
+    }
+
+    constexpr auto position_at(std::size_t i, std::size_t j,
+                               std::size_t k) const
+        -> Eigen::Vector3<Config::float_type>
+        requires(detail::GeometricField<FieldTag>)
+    {
+        static constexpr auto Loc = detail::field_location<FieldTag>();
+        auto pos = detail::Geometry<Loc>::position({i, j, k}, geo_context);
+        return {pos[0], pos[1], pos[2]};
     }
 
     // todo, use Geometry<F> for this?
