@@ -14,7 +14,7 @@ void func() {
     auto lowest_corner = std::array{12.0, 13.0, 14.0};
 
     auto conf = Config(extents, grid_size, lowest_corner);
-    auto grid_storage = GridStorage{conf};
+    auto grid_storage = Storage{conf};
 
     // free to move around, copy and destroy
     auto grid_view = GridView{grid_storage};
