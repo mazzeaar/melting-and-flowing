@@ -3,8 +3,11 @@
 #include <Eigen/SparseCore>
 #include <chrono>
 #include <core/log.hpp>
+#include <cstddef>
 #include <grid/grid.hpp>
 #include <vector>
+
+#include "grid/core.hpp"
 
 namespace solver {
 
@@ -17,6 +20,31 @@ struct Solver {
         std::size_t max_steps;
 
         // force vectors, constants later, ...
+    };
+
+    struct PressureConfig {
+        // interior cells only, i.e. the number of pressure unknowns per axis
+        std::size_t nx{}, ny{}, nz{};
+        double dx{}, dy{}, dz{};
+
+        static auto from(const grid::Config& cfg) -> PressureConfig {
+            const auto geo = grid::GeometryContext{cfg};
+            const auto& ext = cfg.grid_extents;
+            return {
+                .nx = ext.extent(0) - 2,
+                .ny = ext.extent(1) - 2,
+                .nz = ext.extent(2) - 2,
+                .dx = geo.cell_size[0],
+                .dy = geo.cell_size[1],
+                .dz = geo.cell_size[2],
+            };
+        }
+
+        auto n_unkowns() const { return nx * ny * nz; }
+
+        auto row(std::size_t i, std::size_t j, std::size_t k) const {
+            return i + nx * ((j - 1) + ny * (k - 1));
+        }
     };
 
     // do we even need this?
@@ -44,6 +72,7 @@ struct Solver {
 
    private:
     Statistics stats;
+    PressureConfig pressure_cfg;
     Eigen::SparseMatrix<float_type> some_solver;
     std::vector<float_type> some_pingpong_buffer;
 
@@ -81,7 +110,7 @@ struct Solver {
 
     // Step 3: Pressure Poisson equation
     // ∇²p = (rho / dt) * ∇·u2
-    void solve_pressure(Config cfg) {}
+    void solve_pressure(Config cfg);
 
     // Step 4: Pressure projection
     // u_new = u2 - (dt / rho) * ∇p

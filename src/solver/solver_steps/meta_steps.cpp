@@ -5,6 +5,7 @@ namespace solver {
 
 void Solver::prepare(Solver::Config cfg) {
     Log("preparing solver");
+    pressure_cfg = PressureConfig::from(cfg.grid.config());
     // stuff that we only have to do once per grid
     // - memory allocations
     // - set up stencils and then:
