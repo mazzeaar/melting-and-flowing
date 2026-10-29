@@ -9,7 +9,6 @@ namespace solver {
 
 void Solver::solve_pressure(Config cfg) {
     using enum grid::Field;
-    typedef Eigen::Triplet<float_type> Triplet;
 
     auto u = cfg.grid.view<U>();
     auto v = cfg.grid.view<V>();
@@ -21,7 +20,7 @@ void Solver::solve_pressure(Config cfg) {
     // Initialize the rhs vector
     Eigen::VectorX<float_type> rhs(pcfg.n_unkowns());
     Eigen::SparseMatrix<float_type> A(pcfg.n_unkowns(), pcfg.n_unkowns());
-    std::vector<Triplet> tripletList;
+    std::vector<Eigen::Triplet<float_type>> tripletList;
     tripletList.reserve(7 * pcfg.n_unkowns() + 1);
 
     // For now we assume that the grid cells are uniform
