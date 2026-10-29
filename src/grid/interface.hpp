@@ -94,6 +94,15 @@ template <Field FieldTag> struct FieldInterface {
         return detail::Geometry<Loc>::cell_type({i, j, k}, {cfg});
     }
 
+    constexpr auto contains_point(
+        const Eigen::Vector3<grid::Config::float_type>& point) const -> bool
+        requires(detail::GeometricField<FieldTag>)
+    {
+        constexpr auto Loc = detail::field_location<FieldTag>();
+        return detail::Geometry<Loc>::contains_point(
+            std::span<const Config::float_type, 3>{point.data(), 3}, {cfg});
+    }
+
     constexpr auto interpolation_stencil(
         std::span<const Config::float_type, 3> point) const
         -> InterpolationStencil
