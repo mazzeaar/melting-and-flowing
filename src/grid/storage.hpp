@@ -8,7 +8,7 @@
 
 namespace grid {
 
-struct GridStorage {
+struct Storage {
     friend class GridView;
     Config config;
 
@@ -16,7 +16,7 @@ struct GridStorage {
     // all external memory interactions must only happen through view()
     std::vector<Config::float_type> flat_storage;
 
-    GridStorage(Config config) : config{config} {
+    Storage(Config config) : config{config} {
         constexpr auto n_fields = std::to_underlying(Field::COUNT);
         auto buffer_size = config.grid_mapping.required_span_size();
         auto total_size = n_fields * buffer_size;
@@ -73,10 +73,10 @@ struct GridStorage {
 };
 
 class GridView {
-    GridStorage* storage;
+    Storage* storage;
 
    public:
-    constexpr GridView(GridStorage& s) : storage{&s} {}
+    constexpr GridView(Storage& s) : storage{&s} {}
 
     // maybe we should add
     //   - mapping()
