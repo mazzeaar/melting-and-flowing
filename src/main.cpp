@@ -4,14 +4,10 @@
 #include <Eigen/Dense>
 #include <array>
 #include <core/paths.hpp>
-#include <grid/example.hpp>
 #include <grid/grid.hpp>
 #include <print>
 #include <solver/solver.hpp>
 #include <vector>
-
-#include "grid/core.hpp"
-#include "grid/storage.hpp"
 
 int main() {
     auto grid_extents = std::array{20, 20, 20};
