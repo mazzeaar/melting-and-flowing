@@ -4,6 +4,7 @@
 #include <print>
 
 #include "core.hpp"
+#include "core/log.hpp"
 #include "interface.hpp"
 
 namespace grid {
@@ -29,8 +30,7 @@ struct Storage {
                                ext.extent(1) + offset, ext.extent(2) + offset);
         };
 
-        std::println(
-            "Initialised FieldStorage:\n"
+        Log("Initialised FieldStorage:\n"
             "  field count: {}\n"
             "  allocated: {}kb\n"
             "  number of cells: {}\n"
@@ -40,7 +40,7 @@ struct Storage {
             format_extents(config.grid_extents),
             format_extents(config.grid_extents, -1));
         if (kb > 40'000) {
-            std::println("\n\ncan your L3 really handle {}mb?\n\n", kb / 1000);
+            Log("\n\ncan your L3 really handle {}mb?\n\n", kb / 1000);
         }
     }
 
