@@ -8,6 +8,7 @@
 #include <print>
 #include <vector>
 
+#include "core/exception.hpp"
 #include "grid/grid.hpp"
 #include "solver/solver.hpp"
 
@@ -36,7 +37,8 @@ auto make_config() -> grid::Config {
 }
 
 auto max_abs_divergence(GridView grid) -> double {
-    const auto pcfg = PressureConfig::from(grid.config());
+    auto pcfg = PressureConfig{};
+    pcfg.prepare(grid.config());
     auto u = grid.view<Field::U>();
     auto v = grid.view<Field::V>();
     auto w = grid.view<Field::W>();
@@ -66,7 +68,8 @@ void run_pressure_steps(GridView grid) {
 auto test_removes_divergence() -> bool {
     auto storage = grid::Storage{make_config()};
     auto grid = GridView{storage};
-    const auto pcfg = PressureConfig::from(grid.config());
+    auto pcfg = PressureConfig{};
+    pcfg.prepare(grid.config());
     auto u = grid.view<Field::U>();
     auto v = grid.view<Field::V>();
     auto w = grid.view<Field::W>();
@@ -103,7 +106,8 @@ auto test_removes_divergence() -> bool {
 auto test_keeps_divergence_free_field() -> bool {
     auto storage = grid::Storage{make_config()};
     auto grid = GridView{storage};
-    const auto pcfg = PressureConfig::from(grid.config());
+    auto pcfg = PressureConfig{};
+    pcfg.prepare(grid.config());
     auto u = grid.view<Field::U>();
     auto v = grid.view<Field::V>();
 
@@ -117,10 +121,10 @@ auto test_keeps_divergence_free_field() -> bool {
     }
 
     const auto before = max_abs_divergence(grid);
-    const auto u_before = std::vector<double>(u.flat_view().begin(),
-                                              u.flat_view().end());
-    const auto v_before = std::vector<double>(v.flat_view().begin(),
-                                              v.flat_view().end());
+    const auto u_before =
+        std::vector<double>(u.flat_view().begin(), u.flat_view().end());
+    const auto v_before =
+        std::vector<double>(v.flat_view().begin(), v.flat_view().end());
 
     run_pressure_steps(grid);
 
@@ -135,6 +139,21 @@ auto test_keeps_divergence_free_field() -> bool {
     return before < 1e-12 && max_change < 1e-10;
 }
 
+// dz = 0.75 while dx = dy = 0.5 -> prepare must reject the grid
+auto test_rejects_non_uniform_cells() -> bool {
+    const auto cfg =
+        grid::Config{std::array{6, 6, 6}, std::array{2.0, 2.0, 3.0},
+                     std::array{0.0, 0.0, 0.0}};
+    auto pcfg = PressureConfig{};
+    try {
+        pcfg.prepare(cfg);
+    } catch (const core::Error& e) {
+        std::println("  threw: {}", e.what());
+        return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 int main() {
@@ -146,6 +165,7 @@ int main() {
     const auto cases = std::array{
         Case{"removes divergence", test_removes_divergence},
         Case{"keeps divergence-free field", test_keeps_divergence_free_field},
+        Case{"rejects non-uniform cells", test_rejects_non_uniform_cells},
     };
 
     auto failed = 0;

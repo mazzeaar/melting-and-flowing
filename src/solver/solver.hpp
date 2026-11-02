@@ -51,7 +51,7 @@ struct Solver {
 
             if (dx != dy || dx != dz) {
                 throw core::Error(
-                    "PressureConfig: Grid cells are not uniforemly sized - not "
+                    "PressureConfig: Grid cells are not uniformly sized - not "
                     "supported right "
                     "now");
             }
@@ -109,7 +109,7 @@ struct Solver {
 
             if (chol.info() != Eigen::Success) {
                 throw core::Error(
-                    "PressureConfig: Cholesk factorization failed");
+                    "PressureConfig: Cholesky factorization failed");
             }
         }
 
