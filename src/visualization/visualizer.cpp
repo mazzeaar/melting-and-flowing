@@ -3,25 +3,41 @@
 #include <imgui.h>
 #include <polyscope/polyscope.h>
 
+#include "core/paths.hpp"
+#include "mesh/mesh.hpp"
 #include "polyscope/messages.h"
+#include "polyscope/surface_mesh.h"
 #include "simulation.hpp"
 
 namespace visualization {
 
 Visualizer::Visualizer(Simulation& sim) : sim_{sim} {}
 
-void Visualizer::run() {
-    initialize();
+Visualizer::~Visualizer() {
+    // probably leaks memory
+    polyscope::state::filesDroppedCallback = nullptr;
+    polyscope::state::userCallback = nullptr;
+}
+
+void Visualizer::init() {
+    polyscope::options::giveFocusOnShow = true;
+
+    polyscope::init();
+
+    update();
+
+    const auto default_mesh = core::paths::mesh("bunny.obj");
+    load_mesh(std::array{default_mesh.string()});
 
     polyscope::state::userCallback = [this] { callback(); };
     polyscope::state::filesDroppedCallback = [this](auto files) {
         load_mesh(files);
     };
+}
 
+void Visualizer::run() {
+    init();
     polyscope::show();
-
-    polyscope::state::filesDroppedCallback = nullptr;
-    polyscope::state::userCallback = nullptr;
 }
 
 void Visualizer::load_mesh(std::span<const std::string> files) {
@@ -34,14 +50,12 @@ void Visualizer::load_mesh(std::span<const std::string> files) {
             continue;
         }
 
-        sim_.load_mesh(file);
+        mesh_ptr = std::make_unique<Mesh>(file);
+        sim_.load_mesh(mesh_ptr);
+        // temporary, delete this
+        polyscope::registerSurfaceMesh("Mesh", mesh_ptr->vertices,
+                                       mesh_ptr->faces);
     }
-}
-
-void Visualizer::initialize() {
-    polyscope::init();
-
-    update();
 }
 
 void Visualizer::callback() {

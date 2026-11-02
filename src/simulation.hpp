@@ -1,7 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <filesystem>
+#include <memory>
 
 #include "core/paths.hpp"
 #include "grid/grid.hpp"
@@ -13,7 +15,6 @@ struct Simulation {
 
     static constexpr auto default_mesh = "bunny.obj";
     std::filesystem::path mesh_path = core::paths::mesh(default_mesh);
-
     std::size_t step_count = 0;
     double time = 0.0;
 
@@ -26,12 +27,10 @@ struct Simulation {
     Simulation(Simulation&&) = delete;
     Simulation& operator=(Simulation&&) = delete;
 
-    auto load_mesh(std::filesystem::path new_mesh) {
-        if (new_mesh.extension() != ".obj") {
-            return;
-        }
+    auto write_mesh(Mesh& mesh) { Log("TODO: implement grid to mesh"); }
 
-        Log("Loading new mesh '{}'", new_mesh.filename().c_str());
+    auto load_mesh(const std::unique_ptr<Mesh>& mesh) {
+        Log("Loading new mesh");
         Log("Implement mesh initialization here:)");
 
         // re-initialise grid from mesh

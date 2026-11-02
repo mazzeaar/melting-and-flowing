@@ -7,6 +7,9 @@
 #include "core/log.hpp"
 #include "interface.hpp"
 
+// forward declaration
+struct Mesh;
+
 namespace grid {
 
 struct Storage {
@@ -77,6 +80,8 @@ class GridView {
 
    public:
     constexpr GridView(Storage& s) : storage{&s} {}
+
+    constexpr void load_mesh(const Mesh& mesh);
 
     // maybe we should add
     //   - mapping()
