@@ -200,6 +200,9 @@ struct Solver {
     // u_new = u2 - (dt / rho) * ∇p
     void project_velocity(Config cfg);
 
+    // Step 4.1: project particles to cell state
+    void project_particles(Config cfg);
+
     // Step 5: Temperature advection
     // T1 = T_old - dt * (u_new · ∇)T_old
     void advect_temperature(Config cfg) {}

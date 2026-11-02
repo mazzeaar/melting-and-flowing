@@ -19,12 +19,14 @@ struct Storage {
     // just using flat storage for now
     // all external memory interactions must only happen through view()
     std::vector<Config::float_type> flat_storage;
+    std::vector<CellState> state;
 
     Storage(Config config) : config{config} {
         constexpr auto n_fields = std::to_underlying(Field::COUNT);
         auto buffer_size = config.grid_mapping.required_span_size();
         auto total_size = n_fields * buffer_size;
 
+        state = std::vector<CellState>(total_size, CellState::EMPTY);
         flat_storage = std::vector<Config::float_type>(total_size, 0.0);
         auto kb = total_size / (sizeof(Config::float_type) * 1000);
 
@@ -63,6 +65,9 @@ struct Storage {
                 {self.flat_storage.data(), 3 * field_size},
                 self.config,
             };
+        } else if constexpr (F == State) {
+            return FieldInterface<F>{{self.state.data(), field_size},
+                                     self.config};
         } else {
             static_assert(
                 false,
@@ -81,8 +86,6 @@ class GridView {
    public:
     constexpr GridView(Storage& s) : storage{&s} {}
     constexpr auto config() const -> const Config& { return storage->config; }
-
-    constexpr void load_mesh(const Mesh& mesh);
 
     // maybe we should add
     //   - mapping()
