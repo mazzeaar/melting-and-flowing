@@ -1,7 +1,9 @@
 #pragma once
 
 #include <Eigen/Core>
+#include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 
 #include "core.hpp"
@@ -25,6 +27,20 @@ template <Location L> struct Geometry {
         return out;
     }
 
+    // index of the last plane holding a usable sample along axis
+    // - centered along axis: last plane is a ghost -> extent - 1
+    // - on cell boundary along axis: last plane is a placeholder, the one
+    //   before it lies on the physical wall -> extent - 2
+    [[nodiscard]] static constexpr auto last_sample(std::size_t axis,
+                                                    const GeometryContext& ctx)
+        -> std::size_t {
+        constexpr auto off = offset();
+        const auto last = ctx.extents.extent(axis) - 1;
+        return off.at(axis) == 1.0 ? last - 1 : last;
+    }
+
+    // true if point lies in [position(0), position(last_sample)] on all axes,
+    // i.e. it can be interpolated without touching placeholder planes
     [[nodiscard]] static constexpr auto contains_point(
         std::span<const float_type, 3> point, const GeometryContext& ctx)
         -> bool {
@@ -37,11 +53,11 @@ template <Location L> struct Geometry {
                             (off[axis] - 1.0) * ctx.cell_size[axis];
 
             const auto hi = ctx.lowest_corner[axis] +
-                            (static_cast<float_type>(ctx.extents.extent(axis)) -
-                             2.0 + off[axis]) *
+                            (static_cast<float_type>(last_sample(axis, ctx)) -
+                             1.0 + off[axis]) *
                                 ctx.cell_size[axis];
 
-            if (!std::isfinite(x) || x < lo || x >= hi) {
+            if (!std::isfinite(x) || x < lo || x > hi) {
                 return false;
             }
         }
@@ -73,12 +89,14 @@ template <Location L> struct Geometry {
     // meaning: for any point inside the grid there are 8 values closest to it.
     //          -> the point is contained in a cube formed by those 8 values
     // this function returns the lowest index of this cube
+    // a point exactly on the last sample uses the cube below it (weight 1 on
+    // the upper plane), so the cube never reaches a placeholder plane
     [[nodiscard]] static constexpr auto min_corner(
         std::span<const double, 3> point, const GeometryContext& ctx)
         -> std::array<std::size_t, 3> {
         constexpr auto off = offset();
         auto out = std::array<std::size_t, 3>{};
-        for (auto i : {0, 1, 2}) {
+        for (std::size_t i = 0; i < 3; ++i) {
             const auto index = std::floor((point[i] - ctx.lowest_corner[i]) /
                                               ctx.cell_size[i] -
                                           off[i]) +
@@ -86,10 +104,10 @@ template <Location L> struct Geometry {
 
             assert(std::isfinite(index));
             assert(index >= 0.0);
-            assert(index + 1.0 <
-                   static_cast<float_type>(ctx.extents.extent(i)));
+            assert(index <= static_cast<float_type>(last_sample(i, ctx)));
 
-            out[i] = static_cast<std::size_t>(index);
+            out[i] = std::min(static_cast<std::size_t>(index),
+                              last_sample(i, ctx) - 1);
         }
         return out;
     }
