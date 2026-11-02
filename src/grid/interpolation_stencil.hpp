@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <ranges>
 
+#include "grid/core.hpp"
+
 namespace grid {
 
 struct InterpolationStencil {
@@ -35,10 +37,11 @@ struct InterpolationStencil {
    public:
     // if this does not work with Eigen stuff add a new constructor and convert
     // to std::span
-    constexpr InterpolationStencil(std::span<const double, 3> target_point,
-                                   const Index& min_corner,
-                                   std::span<const double, 3> min_corner_pos,
-                                   std::span<const double, 3> cell_size) {
+    constexpr InterpolationStencil(
+        std::span<const Config::float_type, 3> target_point,
+        const Index& min_corner,
+        std::span<const Config::float_type, 3> min_corner_pos,
+        std::span<const Config::float_type, 3> cell_size) {
         for (std::size_t axis = 0; axis < 3; ++axis) {
             assert(cell_size[axis] > 0.0);
         }
@@ -63,6 +66,18 @@ struct InterpolationStencil {
             }
         }
     }
+
+    constexpr InterpolationStencil(
+        const Eigen::Vector3<Config::float_type>& target_point,
+        const Index& min_corner,
+        const Eigen::Vector3<Config::float_type>& min_corner_pos,
+        const Eigen::Vector3<Config::float_type>& cell_size)
+        : InterpolationStencil{
+              std::span<const Config::float_type, 3>{target_point.data(), 3},
+              min_corner,
+              std::span<const Config::float_type, 3>{min_corner_pos.data(), 3},
+              std::span<const Config::float_type, 3>{cell_size.data(), 3},
+          } {}
 
     static constexpr auto size() -> std::size_t { return n_neighbours; }
     constexpr const auto& weights() const { return m_weights; }
