@@ -18,11 +18,11 @@ template <typename F> void handle_errors(F&& fn) {
     try {
         std::forward<F>(fn)();
     } catch (const core::Error& e) {
-        polyscope::error(e.what());
+        polyscope::warning("Error", e.what());
     } catch (const std::exception& e) {
         polyscope::error(std::format("Unexpected error: {}", e.what()));
     } catch (...) {
-        polyscope::error("Unexpected error");
+        polyscope::error("Unknown exception");
     }
 }
 
@@ -60,11 +60,9 @@ void Visualizer::run() {
 void Visualizer::load_mesh(std::span<const std::string> files) {
     for (std::filesystem::path file : files) {
         if (file.extension() != ".obj") {
-            polyscope::warning(
-                "Invalid file format, only *.obj is ok",
-                std::format("file extension '{}' is not supported",
-                            file.extension().c_str()));
-            continue;
+            throw core::Error(
+                "Invalid file '{}', only *.obj is supported as of now",
+                file.extension().c_str());
         }
 
         mesh_ptr = std::make_unique<Mesh>(file);
