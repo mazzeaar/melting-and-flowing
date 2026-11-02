@@ -8,7 +8,25 @@
 #include "core/exception.hpp"
 #include "core/paths.hpp"
 #include "grid/grid.hpp"
+#include "polyscope/point_cloud.h"
 #include "solver/solver.hpp"
+
+struct Particles {
+    struct Config {
+        Eigen::Vector3i particles_per_cell = {4, 4, 4};
+        bool perturb_initial_position = false;
+    };
+
+   private:
+    Eigen::VectorXd positions;
+
+   public:
+    Particles(Config conf, grid::Config grid_config,
+              const std::unique_ptr<Mesh>& mesh_ptr);
+
+    auto pos() -> auto& { return positions; }
+    auto pos() const -> const auto& { return positions; }
+};
 
 struct Simulation {
     grid::Storage storage;

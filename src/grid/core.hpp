@@ -60,6 +60,15 @@ enum class Field : std::uint8_t {
     T,
     COUNT,
     Velocities,  // combines all 3 velocities into one, for solvers
+    State,
+};
+
+// von Neumann neighbourhood
+enum class CellState {
+    SOLID,    // boundaries/walls
+    EMPTY,    // no particles
+    FULL,     // #particles > 0 && all neighbours not empty
+    SURFACE,  // #particles > 0 && (#empty neighbours > 0)
 };
 
 template <Field F>
@@ -67,6 +76,8 @@ using FieldType = decltype([] {
     if constexpr (F == Field::U || F == Field::V || F == Field::W ||
                   F == Field::P || F == Field::T || F == Field::Velocities) {
         return Config::float_type{};
+    } else if constexpr (F == Field::State) {
+        return CellState{};
     } else {
         // assert(false) will always crash...
         static_assert(F != F, "Unhandled field");  // NOLINT
@@ -92,7 +103,7 @@ using copy_const_t =
 
 template <Field F>
 concept GeometricField = F == Field::U || F == Field::V || F == Field::W ||
-                         F == Field::P || F == Field::T;
+                         F == Field::P || F == Field::T || F == Field::State;
 
 constexpr auto matches(CellType actual, CellType requested) -> bool {
     return (std::to_underlying(actual) & std::to_underlying(requested)) != 0;
@@ -128,10 +139,10 @@ consteval auto cell_position() -> std::array<Config::float_type, 3> {
     } else if constexpr (L == Location::NODE) {
         return {1.0, 1.0, 1.0};
     } else {
-        static_assert(
-            false,
-            "Did you add a new grid::Location enum entry and not handle it in "
-            "cell_position()?:)");
+        static_assert(false,
+                      "Did you add a new grid::Location enum entry and not "
+                      "handle it in "
+                      "cell_position()?:)");
     }
 }
 
@@ -145,7 +156,7 @@ consteval auto field_location() -> Location
         return Location::Y_FACE;
     } else if constexpr (F == Field::W) {
         return Location::Z_FACE;
-    } else if constexpr (F == Field::P || F == Field::T) {
+    } else if constexpr (F == Field::P || F == Field::T || F == Field::State) {
         return Location::CELL;
     } else {
         static_assert(false,

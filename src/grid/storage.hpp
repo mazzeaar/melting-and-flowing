@@ -19,6 +19,7 @@ struct Storage {
     // just using flat storage for now
     // all external memory interactions must only happen through view()
     std::vector<Config::float_type> flat_storage;
+    std::vector<CellState> state;
 
     Storage(Config config) : config{config} {
         constexpr auto n_fields = std::to_underlying(Field::COUNT);
@@ -81,8 +82,6 @@ class GridView {
    public:
     constexpr GridView(Storage& s) : storage{&s} {}
     constexpr auto config() const -> const Config& { return storage->config; }
-
-    constexpr void load_mesh(const Mesh& mesh);
 
     // maybe we should add
     //   - mapping()
