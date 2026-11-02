@@ -1,12 +1,14 @@
 #pragma once
 
-#include <Eigen/SparseCore>
 #include <chrono>
 #include <core/log.hpp>
 #include <cstddef>
 #include <grid/grid.hpp>
 #include <vector>
 
+#include "Eigen/Core"
+#include "Eigen/Sparse"
+#include "core/exception.hpp"
 #include "grid/core.hpp"
 
 namespace solver {
@@ -22,29 +24,108 @@ struct Solver {
         // force vectors, constants later, ...
     };
 
+    /// Discrete pressure Poisson setup
+    ///
+    /// Assumptions:
+    /// - Dimensions (nx, ny, nz) count interior cells only, the ghost cells
+    /// are not counted
+    /// - The stencil is pure, meaning scaling information needs to be
+    /// factorized into the RHS of the possion solve
     struct PressureConfig {
-        // interior cells only, i.e. the number of pressure unknowns per axis
+        using float_type = grid::Config::float_type;
+        using Matrix = Eigen::SparseMatrix<float_type>;
+        using Vector = Eigen::VectorX<float_type>;
+
         std::size_t nx{}, ny{}, nz{};
         double dx{}, dy{}, dz{};
 
-        static auto from(const grid::Config& cfg) -> PressureConfig {
+        void prepare(const grid::Config& cfg) {
             const auto geo = grid::GeometryContext{cfg};
             const auto& ext = cfg.grid_extents;
-            return {
-                .nx = ext.extent(0) - 2,
-                .ny = ext.extent(1) - 2,
-                .nz = ext.extent(2) - 2,
-                .dx = geo.cell_size[0],
-                .dy = geo.cell_size[1],
-                .dz = geo.cell_size[2],
-            };
+            nx = ext.extent(0) - 2;
+            ny = ext.extent(1) - 2;
+            nz = ext.extent(2) - 2;
+            dx = geo.cell_size[0];
+            dy = geo.cell_size[1];
+            dz = geo.cell_size[2];
+
+            if (dx != dy || dx != dz) {
+                throw core::Error(
+                    "PressureConfig: Grid cells are not uniforemly sized - not "
+                    "supported right "
+                    "now");
+            }
+
+            std::vector<Eigen::Triplet<float_type>> triplets;
+            triplets.reserve(7 * n_unkowns() + 1);
+
+            for (std::size_t i = 1; i <= nx; i++) {
+                for (std::size_t j = 1; j <= ny; j++) {
+                    for (std::size_t k = 1; k <= nz; k++) {
+                        std::size_t n_fluid = 0;
+                        auto r = row(i, j, k);
+
+                        auto couple = [&](std::size_t ni, std::size_t nj,
+                                          std::size_t nk) {
+                            triplets.emplace_back(r, row(ni, nj, nk), -1);
+                            n_fluid++;
+                        };
+
+                        if (i > 1) {
+                            couple(i - 1, j, k);
+                        }
+                        if (i < nx) {
+                            couple(i + 1, j, k);
+                        }
+                        if (j > 1) {
+                            couple(i, j - 1, k);
+                        }
+                        if (j < ny) {
+                            couple(i, j + 1, k);
+                        }
+                        if (k > 1) {
+                            couple(i, j, k - 1);
+                        }
+                        if (k < nz) {
+                            couple(i, j, k + 1);
+                        }
+
+                        // For example when we are on a left edge, we only use 4
+                        // pressure values hence we count for this using n_fluid
+                        triplets.emplace_back(r, r,
+                                              static_cast<double>(n_fluid));
+                    }
+                }
+            }
+
+            // We need to pin a certain value, otherwise all rows of A sum to 0
+            // and the trivial solution A * 1 =
+            triplets.emplace_back(0, 0, 1.0);
+
+            stencil.resize(n_unkowns(), n_unkowns());
+            stencil.setFromTriplets(triplets.begin(), triplets.end());
+
+            chol.compute(stencil);
+
+            if (chol.info() != Eigen::Success) {
+                throw core::Error(
+                    "PressureConfig: Cholesk factorization failed");
+            }
         }
 
-        auto n_unkowns() const { return nx * ny * nz; }
+        auto solve(const Vector& rhs) const -> Vector {
+            return chol.solve(rhs);
+        }
 
-        auto row(std::size_t i, std::size_t j, std::size_t k) const {
+        std::size_t n_unkowns() const { return nx * ny * nz; }
+
+        std::size_t row(std::size_t i, std::size_t j, std::size_t k) const {
             return (i - 1) + nx * ((j - 1) + ny * (k - 1));
         }
+
+       private:
+        Matrix stencil;
+        Eigen::SimplicialCholesky<Matrix> chol;
     };
 
     // do we even need this?
