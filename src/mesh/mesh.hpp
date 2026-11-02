@@ -6,8 +6,9 @@
 #include <Eigen/Core>
 #include <cmath>
 #include <filesystem>
-#include <memory>
 #include <stdexcept>
+
+#include "core/exception.hpp"
 
 #pragma once
 
@@ -33,8 +34,7 @@ struct Mesh {
 
     explicit Mesh(const std::filesystem::path& path) : file_path{path} {
         if (!igl::readOBJ(path.string(), vertices, faces)) {
-            // TODO: replace with custom exception
-            throw std::runtime_error("Failed to load mesh: " + path.string());
+            throw core::Error("Failed to load mesh: " + path.string());
         }
 
         igl::fast_winding_number(vertices, faces, taylor_order, bvh);

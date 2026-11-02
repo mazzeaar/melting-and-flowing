@@ -3,6 +3,9 @@
 #include <imgui.h>
 #include <polyscope/polyscope.h>
 
+#include <exception>
+
+#include "core/exception.hpp"
 #include "core/paths.hpp"
 #include "mesh/mesh.hpp"
 #include "polyscope/messages.h"
@@ -10,6 +13,18 @@
 #include "simulation.hpp"
 
 namespace visualization {
+
+template <typename F> void handle_errors(F&& fn) {
+    try {
+        std::forward<F>(fn)();
+    } catch (const core::Error& e) {
+        polyscope::error(e.what());
+    } catch (const std::exception& e) {
+        polyscope::error(std::format("Unexpected error: {}", e.what()));
+    } catch (...) {
+        polyscope::error("Unexpected error");
+    }
+}
 
 Visualizer::Visualizer(Simulation& sim) : sim_{sim} {}
 
@@ -21,7 +36,6 @@ Visualizer::~Visualizer() {
 
 void Visualizer::init() {
     polyscope::options::giveFocusOnShow = true;
-
     polyscope::init();
 
     update();
@@ -29,9 +43,12 @@ void Visualizer::init() {
     const auto default_mesh = core::paths::mesh("bunny.obj");
     load_mesh(std::array{default_mesh.string()});
 
-    polyscope::state::userCallback = [this] { callback(); };
+    polyscope::state::userCallback = [this] {
+        handle_errors([this] { callback(); });
+    };
+
     polyscope::state::filesDroppedCallback = [this](auto files) {
-        load_mesh(files);
+        handle_errors([this, &files] { load_mesh(files); });
     };
 }
 
@@ -53,6 +70,7 @@ void Visualizer::load_mesh(std::span<const std::string> files) {
         mesh_ptr = std::make_unique<Mesh>(file);
         sim_.load_mesh(mesh_ptr);
         // temporary, delete this
+        // just here to display something on the screen
         polyscope::registerSurfaceMesh("Mesh", mesh_ptr->vertices,
                                        mesh_ptr->faces);
     }

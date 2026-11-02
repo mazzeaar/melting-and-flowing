@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <memory>
 
+#include "core/exception.hpp"
 #include "core/paths.hpp"
 #include "grid/grid.hpp"
 #include "solver/solver.hpp"
@@ -30,6 +31,10 @@ struct Simulation {
     auto write_mesh(Mesh& mesh) { Log("TODO: implement grid to mesh"); }
 
     auto load_mesh(const std::unique_ptr<Mesh>& mesh) {
+        if (!mesh) {
+            throw core::Error("Simulation::load_mesh(): mesh is nullptr :(");
+        }
+
         Log("Loading new mesh");
         Log("Implement mesh initialization here:)");
 
