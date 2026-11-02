@@ -77,6 +77,7 @@ class GridView {
 
    public:
     constexpr GridView(Storage& s) : storage{&s} {}
+    constexpr auto config() const -> const Config& { return storage->config; }
 
     // maybe we should add
     //   - mapping()

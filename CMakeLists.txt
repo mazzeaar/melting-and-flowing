@@ -9,12 +9,25 @@ add_subdirectory(external/eigen EXCLUDE_FROM_ALL)
 add_subdirectory(external/polyscope)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cpp")
+list(REMOVE_ITEM SOURCES "${PROJECT_SOURCE_DIR}/src/main.cpp")
 
-add_executable(fluid_sim ${SOURCES})
+add_library(fluid_core STATIC ${SOURCES})
 
-target_include_directories(fluid_sim PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_include_directories(fluid_core PUBLIC "${PROJECT_SOURCE_DIR}/src")
 
-target_link_libraries(fluid_sim PRIVATE Eigen3::Eigen polyscope)
+target_link_libraries(fluid_core PUBLIC Eigen3::Eigen)
+
+add_executable(fluid_sim src/main.cpp)
+
+target_link_libraries(fluid_sim PRIVATE fluid_core polyscope)
 
 target_compile_definitions(
   fluid_sim PRIVATE FLUID_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets")
+
+enable_testing()
+
+add_executable(test_pressure tests/test_pressure.cpp)
+
+target_link_libraries(test_pressure PRIVATE fluid_core)
+
+add_test(NAME pressure COMMAND test_pressure)
