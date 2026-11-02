@@ -66,6 +66,9 @@ target_compile_options(
 
 # Main executable
 add_executable(fluid_sim src/main.cpp)
+target_compile_options(
+  fluid_sim
+  PRIVATE $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-invalid-offsetof>)
 target_link_libraries(fluid_sim PRIVATE fluid_core)
 
 target_compile_definitions(
