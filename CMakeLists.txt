@@ -50,17 +50,31 @@ add_subdirectory(external/libigl EXCLUDE_FROM_ALL)
 
 # Sources
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cpp")
+list(REMOVE_ITEM SOURCES "${PROJECT_SOURCE_DIR}/src/main.cpp")
 
-add_executable(fluid_sim ${SOURCES})
+# Core library
+add_library(fluid_core STATIC ${SOURCES})
 
+target_include_directories(fluid_core PUBLIC "${PROJECT_SOURCE_DIR}/src")
+
+target_link_libraries(fluid_core PUBLIC Eigen3::Eigen polyscope igl::core)
+
+# Suppress warnings originating from libigl
 target_compile_options(
-  fluid_sim
-  PRIVATE # surpress libigl warnings
-          $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-invalid-offsetof>)
+  fluid_core
+  PRIVATE $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-invalid-offsetof>)
 
-target_include_directories(fluid_sim PRIVATE "${PROJECT_SOURCE_DIR}/src")
-
-target_link_libraries(fluid_sim PRIVATE Eigen3::Eigen polyscope igl::core)
+# Main executable
+add_executable(fluid_sim src/main.cpp)
+target_link_libraries(fluid_sim PRIVATE fluid_core)
 
 target_compile_definitions(
-  fluid_sim PRIVATE FLUID_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets")
+  fluid_core PUBLIC FLUID_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets")
+
+# Tests
+enable_testing()
+
+add_executable(test_pressure tests/test_pressure.cpp)
+target_link_libraries(test_pressure PRIVATE fluid_core)
+
+add_test(NAME pressure COMMAND test_pressure)

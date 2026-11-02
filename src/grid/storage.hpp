@@ -60,7 +60,7 @@ struct Storage {
             };
         } else if constexpr (F == Velocities) {
             return FieldInterface<F>{
-                self.flat_storage.data(),
+                {self.flat_storage.data(), 3 * field_size},
                 self.config,
             };
         } else {
@@ -80,6 +80,7 @@ class GridView {
 
    public:
     constexpr GridView(Storage& s) : storage{&s} {}
+    constexpr auto config() const -> const Config& { return storage->config; }
 
     constexpr void load_mesh(const Mesh& mesh);
 
