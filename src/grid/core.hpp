@@ -71,18 +71,23 @@ enum class CellState {
     SURFACE,  // #particles > 0 && (#empty neighbours > 0)
 };
 
+namespace detail {
+template <Field F> struct FieldTypeHelper {
+    static_assert(F != F, "Unhandled field");
+};
+
 template <Field F>
-using FieldType = decltype([] {
-    if constexpr (F == Field::U || F == Field::V || F == Field::W ||
-                  F == Field::P || F == Field::T || F == Field::Velocities) {
-        return Config::float_type{};
-    } else if constexpr (F == Field::State) {
-        return CellState{};
-    } else {
-        // assert(false) will always crash...
-        static_assert(F != F, "Unhandled field");  // NOLINT
-    }
-}());
+    requires(F != Field::State)
+struct FieldTypeHelper<F> {
+    using type = Config::float_type;
+};
+
+template <> struct FieldTypeHelper<Field::State> {
+    using type = CellState;
+};
+}  // namespace detail
+
+template <Field F> using FieldType = typename detail::FieldTypeHelper<F>::type;
 
 enum class Axis : std::uint8_t { X, Y, Z };
 

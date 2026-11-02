@@ -26,6 +26,7 @@ struct Storage {
         auto buffer_size = config.grid_mapping.required_span_size();
         auto total_size = n_fields * buffer_size;
 
+        state = std::vector<CellState>(total_size, CellState::EMPTY);
         flat_storage = std::vector<Config::float_type>(total_size, 0.0);
         auto kb = total_size / (sizeof(Config::float_type) * 1000);
 
@@ -64,6 +65,9 @@ struct Storage {
                 {self.flat_storage.data(), 3 * field_size},
                 self.config,
             };
+        } else if constexpr (F == State) {
+            return FieldInterface<F>{{self.state.data(), field_size},
+                                     self.config};
         } else {
             static_assert(
                 false,
