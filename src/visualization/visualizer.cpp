@@ -2,8 +2,11 @@
 
 #include <imgui.h>
 #include <polyscope/polyscope.h>
+#include <polyscope/sparse_volume_grid.h>
+#include <polyscope/volume_grid.h>
 
 #include <exception>
+#include <filesystem>
 
 #include "core/exception.hpp"
 #include "core/paths.hpp"
@@ -41,14 +44,18 @@ void Visualizer::init() {
     update();
 
     const auto default_mesh = core::paths::mesh("bunny.obj");
-    load_mesh(std::array{default_mesh.string()});
+    load_mesh(default_mesh.string());
 
     polyscope::state::userCallback = [this] {
         handle_errors([this] { callback(); });
     };
 
     polyscope::state::filesDroppedCallback = [this](auto files) {
-        handle_errors([this, &files] { load_mesh(files); });
+        handle_errors([this, &files] {
+            for (std::filesystem::path file : files) {
+                load_mesh(file);
+            }
+        });
     };
 }
 
@@ -57,21 +64,33 @@ void Visualizer::run() {
     polyscope::show();
 }
 
-void Visualizer::load_mesh(std::span<const std::string> files) {
-    for (std::filesystem::path file : files) {
-        if (file.extension() != ".obj") {
-            throw core::Error(
-                "Invalid file '{}', only *.obj is supported as of now",
-                file.extension().c_str());
-        }
-
-        mesh_ptr = std::make_unique<Mesh>(file);
-        sim_.load_mesh(mesh_ptr);
-        // temporary, delete this
-        // just here to display something on the screen
-        polyscope::registerSurfaceMesh("Mesh", mesh_ptr->vertices,
-                                       mesh_ptr->faces);
+void Visualizer::load_mesh(std::filesystem::path file) {
+    if (file.extension() != ".obj") {
+        throw core::Error(
+            "Invalid file '{}', only *.obj is supported as of now",
+            file.extension().c_str());
     }
+
+    mesh_ptr = std::make_unique<Mesh>(file);
+
+    // rescale the mesh to fit the grid, with some padding
+    const auto grid_conf = sim_.storage.config;
+    auto grid_min = Eigen::Vector3d{grid_conf.lowest_corner.data()};
+    auto grid_max = grid_min + Eigen::Vector3d{grid_conf.grid_size.data()};
+    auto padding = 0.1;
+
+    mesh_ptr->fit_to_box(grid_min, grid_max, padding);
+
+    // init the sim from the mesh
+    sim_.load_mesh(mesh_ptr);
+
+    // temporary, delete this, later or add as explicit option?
+    // just here to display something on the screen
+    polyscope::registerSurfaceMesh("Mesh", mesh_ptr->vertices, mesh_ptr->faces);
+
+    // sync particles to polyscope for rendering
+    update_particles();
+    update_grid();
 }
 
 void Visualizer::callback() {
@@ -105,7 +124,25 @@ void Visualizer::step() {
     sim_.step(dt_);
 }
 
+void Visualizer::update_particles() {
+    const auto points = sim_.particles.pos();
+
+    if (polyscope::hasPointCloud("Particles")) {
+        auto* cloud = polyscope::getPointCloud("Particles");
+
+        if (cloud->nPoints() == static_cast<std::size_t>(points.rows())) {
+            cloud->updatePointPositions(points);
+            return;
+        }
+    }
+
+    auto* cloud = polyscope::registerPointCloud("Particles", points);
+    cloud->setPointRadius(0.002);
+}
+
 void Visualizer::update() {
+    update_grid();
+    update_particles();
     // synchronize simulation data with Polyscope.
     // polyscope has:
     //  - VolumeGrid (need to interpolate velocities to cell centers)
@@ -116,6 +153,49 @@ void Visualizer::update() {
     //   update_pressure();
     //   update_velocities();
     //   update_surface();
+}
+
+void Visualizer::update_grid() {
+    const auto cfg = sim_.grid().config();
+    const auto state = sim_.grid().view<grid::Field::State>();
+
+    const auto& ext = cfg.grid_extents;
+
+    const int nx = ext.extent(0);
+    const int ny = ext.extent(1);
+    const int nz = ext.extent(2);
+
+    const glm::vec3 lower{cfg.lowest_corner[0], cfg.lowest_corner[1],
+                          cfg.lowest_corner[2]};
+
+    const glm::vec3 upper{lower.x + cfg.grid_size[0],
+                          lower.y + cfg.grid_size[1],
+                          lower.z + cfg.grid_size[2]};
+
+    // Polyscope requires X to vary fastest.
+    std::vector<float> values(nx * ny * nz);
+
+    for (int k = 0; k < nz; ++k) {
+        for (int j = 0; j < ny; ++j) {
+            for (int i = 0; i < nx; ++i) {
+                const auto index = i + nx * (j + ny * k);
+
+                values[index] =
+                    static_cast<float>(std::to_underlying(state[i, j, k]));
+            }
+        }
+    }
+
+    auto* ps_grid = polyscope::registerVolumeGrid(
+        "Fluid Grid", glm::uvec3{nx + 1, ny + 1, nz + 1}, lower, upper);
+
+    ps_grid->setEnabled(true);
+    ps_grid->setEdgeWidth(0.5);
+
+    auto* quantity = ps_grid->addCellScalarQuantity(
+        "Cell State", values, polyscope::DataType::CATEGORICAL);
+
+    quantity->setEnabled(true);
 }
 
 }  // namespace visualization

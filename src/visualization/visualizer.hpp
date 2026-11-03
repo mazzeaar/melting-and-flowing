@@ -3,6 +3,7 @@
 #include <span>
 
 #include "mesh/mesh.hpp"
+#include "simulation.hpp"
 
 // forward declaration
 struct Simulation;
@@ -31,8 +32,10 @@ struct Visualizer {
     void step();
     void callback();
     void draw_controls();
-    void load_mesh(std::span<const std::string> files);
+    void load_mesh(std::filesystem::path);
     void save_mesh();
+    void update_particles();
+    void update_grid();
 };
 
 }  // namespace visualization

@@ -12,25 +12,33 @@
 #include "solver/solver.hpp"
 
 struct Particles {
+    using PositionMatrix =
+        Eigen::Matrix<double, Eigen::Dynamic, 3, Eigen::RowMajor>;
+
+    using PositionView =
+        Eigen::Ref<Eigen::Matrix<double, Eigen::Dynamic, 3, Eigen::RowMajor>, 0,
+                   Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic> >;
+
     struct Config {
-        Eigen::Vector3i particles_per_cell = {4, 4, 4};
-        bool perturb_initial_position = false;
+        std::size_t n_particles = 10000;
     };
 
    private:
-    Eigen::VectorXd positions;
+    PositionMatrix positions;
 
    public:
+    Particles() = default;
     Particles(Config conf, grid::Config grid_config,
               const std::unique_ptr<Mesh>& mesh_ptr);
 
-    auto pos() -> auto& { return positions; }
-    auto pos() const -> const auto& { return positions; }
+    const PositionMatrix& pos() const { return positions; }
+    PositionMatrix& pos() { return positions; }
 };
 
 struct Simulation {
     grid::Storage storage;
     solver::Solver solver;
+    Particles particles;
 
     static constexpr auto default_mesh = "bunny.obj";
     std::filesystem::path mesh_path = core::paths::mesh(default_mesh);
@@ -53,8 +61,9 @@ struct Simulation {
             throw core::Error("Simulation::load_mesh(): mesh is nullptr :(");
         }
 
-        Log("Loading new mesh");
-        Log("Implement mesh initialization here:)");
+        particles = Particles(Particles::Config{}, storage.config, mesh);
+
+        grid().initialise_cell_states(*mesh);
 
         // re-initialise grid from mesh
         //  - no rescaling == no reallocations
@@ -62,6 +71,7 @@ struct Simulation {
 
         solver.prepare(solver::Solver::Config{
             .grid = grid(),
+            .particles = Particles::PositionView{particles.pos()},
             .dt = 0.0,
             .max_steps = 1,
         });
@@ -72,6 +82,7 @@ struct Simulation {
     void step(double dt) {
         solver.step(solver::Solver::Config{
             .grid = grid(),
+            .particles = Particles::PositionView{particles.pos()},
             .dt = dt,
             .max_steps = 1,
         });
