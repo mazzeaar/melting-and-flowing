@@ -4,10 +4,15 @@
 #include "visualization/visualizer.hpp"
 
 int main() {
+    auto n = 15;
+    auto extents = std::array{n, n, n};
+    auto size = std::array{1.0, 1.0, 1.0};
+    auto anchor = std::array{0.0, 0.0, 0.0};
+
     Simulation sim{
-        std::array{20, 20, 20},
-        std::array{20.0, 20.0, 20.0},
-        std::array{0.0, 0.0, 0.0},
+        extents,
+        size,
+        anchor,
     };
 
     visualization::Visualizer viewer{sim};
