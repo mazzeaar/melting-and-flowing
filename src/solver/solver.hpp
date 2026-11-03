@@ -15,9 +15,15 @@ namespace solver {
 
 using Duration = std::chrono::milliseconds;
 
+using ParticleView =
+    Eigen::Ref<Eigen::Matrix<double, Eigen::Dynamic, 3, Eigen::RowMajor>, 0,
+               Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>>;
+
 struct Solver {
     struct Config {
         GridView grid;
+        std::optional<ParticleView> particles;
+
         double dt;
         std::size_t max_steps;
 
@@ -214,6 +220,9 @@ struct Solver {
     // Step 7: Update viscosity from temperature
     // eta_new = eta(T_new)
     void update_viscosity(Config cfg) {}
+
+    // Step 8: update particle positions
+    void advect_particles(Config cfg);
 };  // namespace detail
 
 }  // namespace solver

@@ -62,5 +62,7 @@ void Solver::single_step(Solver::Config cfg) {
     // Step 7: Update viscosity from temperature
     // eta_new = eta(T_new)
     update_viscosity(cfg);
+
+    advect_particles(cfg);
 }
 }  // namespace solver
