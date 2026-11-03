@@ -4,6 +4,7 @@
 #include <print>
 
 #include "core.hpp"
+#include "core/exception.hpp"
 #include "core/log.hpp"
 #include "interface.hpp"
 
@@ -92,6 +93,10 @@ class GridView {
     //   - extents()
     //   - other stuff?
     // here as well idk
+
+    void initialise_cell_states(const Mesh& mesh);
+
+    void advect_particles(Eigen::MatrixXd& positions) const;
 
     template <Field F> constexpr auto view(this auto&& self) {
         return self.storage->template view<F>();
