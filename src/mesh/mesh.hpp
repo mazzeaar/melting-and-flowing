@@ -40,11 +40,49 @@ struct Mesh {
         igl::fast_winding_number(vertices, faces, taylor_order, bvh);
     }
 
-    template <class Derived>
-    auto contains(const Eigen::MatrixBase<Derived>& point) const -> bool {
-        const auto w = igl::fast_winding_number(bvh, wn_accuracy, point.eval());
+    void fit_to_box(const Eigen::Vector3d& box_min,
+                    const Eigen::Vector3d& box_max, double padding = 0.1) {
+        if (vertices.rows() == 0) {
+            throw core::Error("Cannot rescale an empty mesh");
+        }
 
-        return std::abs(w) > inside_threshold;
+        if (padding < 0.0 || padding >= 0.5) {
+            throw core::Error("Invalid mesh padding");
+        }
+
+        const Eigen::Vector3d mesh_min = vertices.colwise().minCoeff();
+        const Eigen::Vector3d mesh_max = vertices.colwise().maxCoeff();
+
+        const Eigen::Vector3d mesh_size = mesh_max - mesh_min;
+        const Eigen::Vector3d box_size = box_max - box_min;
+
+        if ((mesh_size.array() <= 0.0).any() ||
+            (box_size.array() <= 0.0).any()) {
+            throw core::Error("Invalid mesh or box dimensions");
+        }
+
+        const Eigen::Vector3d available_size = box_size * (1.0 - 2.0 * padding);
+
+        const double scale =
+            (available_size.array() / mesh_size.array()).minCoeff();
+
+        const Eigen::Vector3d mesh_center = (mesh_min + mesh_max) * 0.5;
+        const Eigen::Vector3d box_center = (box_min + box_max) * 0.5;
+
+        vertices.rowwise() -= mesh_center.transpose();
+        vertices *= scale;
+        vertices.rowwise() += box_center.transpose();
+
+        igl::fast_winding_number(vertices, faces, taylor_order, bvh);
+    }
+
+    bool contains(const Eigen::Vector3d& point) const {
+        Eigen::Matrix<double, 1, 3> query = point.transpose();
+
+        Eigen::VectorXd winding;
+        igl::fast_winding_number(vertices, faces, query, winding);
+
+        return std::abs(winding(0)) > 0.5;
     }
 
     auto contains_many(const Eigen::MatrixXd& points) const
