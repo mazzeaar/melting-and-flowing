@@ -26,7 +26,7 @@ struct Storage {
         auto buffer_size = config.grid_mapping.required_span_size();
         auto total_size = n_fields * buffer_size;
 
-        state = std::vector<CellState>(total_size, CellState::EMPTY);
+        state = std::vector<CellState>(total_size, CellState::AIR);
         flat_storage = std::vector<Config::float_type>(total_size, 0.0);
         auto kb = total_size / (sizeof(Config::float_type) * 1000);
 

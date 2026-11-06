@@ -6,8 +6,6 @@
 #include <grid/grid.hpp>
 #include <vector>
 
-#include "Eigen/Core"
-#include "Eigen/Sparse"
 #include "core/exception.hpp"
 #include "grid/core.hpp"
 
@@ -29,17 +27,13 @@ struct Solver {
     /// Assumptions:
     /// - Dimensions (nx, ny, nz) count interior cells only, the ghost cells
     /// are not counted
-    /// - The stencil is pure, meaning scaling information needs to be
-    /// factorized into the RHS of the possion solve
     struct PressureConfig {
         using float_type = grid::Config::float_type;
-        using Matrix = Eigen::SparseMatrix<float_type>;
-        using Vector = Eigen::VectorX<float_type>;
 
         std::size_t nx{}, ny{}, nz{};
         double dx{}, dy{}, dz{};
 
-        void prepare(const grid::Config& cfg) {
+        void from(const grid::Config& cfg) {
             const auto geo = grid::GeometryContext{cfg};
             const auto& ext = cfg.grid_extents;
             nx = ext.extent(0) - 2;
@@ -55,66 +49,6 @@ struct Solver {
                     "supported right "
                     "now");
             }
-
-            std::vector<Eigen::Triplet<float_type>> triplets;
-            triplets.reserve(7 * n_unkowns() + 1);
-
-            for (std::size_t i = 1; i <= nx; i++) {
-                for (std::size_t j = 1; j <= ny; j++) {
-                    for (std::size_t k = 1; k <= nz; k++) {
-                        std::size_t n_fluid = 0;
-                        auto r = row(i, j, k);
-
-                        auto couple = [&](std::size_t ni, std::size_t nj,
-                                          std::size_t nk) {
-                            triplets.emplace_back(r, row(ni, nj, nk), -1);
-                            n_fluid++;
-                        };
-
-                        if (i > 1) {
-                            couple(i - 1, j, k);
-                        }
-                        if (i < nx) {
-                            couple(i + 1, j, k);
-                        }
-                        if (j > 1) {
-                            couple(i, j - 1, k);
-                        }
-                        if (j < ny) {
-                            couple(i, j + 1, k);
-                        }
-                        if (k > 1) {
-                            couple(i, j, k - 1);
-                        }
-                        if (k < nz) {
-                            couple(i, j, k + 1);
-                        }
-
-                        // For example when we are on a left edge, we only use 4
-                        // pressure values hence we count for this using n_fluid
-                        triplets.emplace_back(r, r,
-                                              static_cast<double>(n_fluid));
-                    }
-                }
-            }
-
-            // We need to pin a certain value, otherwise all rows of A sum to 0
-            // and the trivial solution A * 1 =
-            triplets.emplace_back(0, 0, 1.0);
-
-            stencil.resize(n_unkowns(), n_unkowns());
-            stencil.setFromTriplets(triplets.begin(), triplets.end());
-
-            chol.compute(stencil);
-
-            if (chol.info() != Eigen::Success) {
-                throw core::Error(
-                    "PressureConfig: Cholesky factorization failed");
-            }
-        }
-
-        auto solve(const Vector& rhs) const -> Vector {
-            return chol.solve(rhs);
         }
 
         std::size_t n_unkowns() const { return nx * ny * nz; }
@@ -122,10 +56,6 @@ struct Solver {
         std::size_t row(std::size_t i, std::size_t j, std::size_t k) const {
             return (i - 1) + nx * ((j - 1) + ny * (k - 1));
         }
-
-       private:
-        Matrix stencil;
-        Eigen::SimplicialCholesky<Matrix> chol;
     };
 
     // do we even need this?
@@ -156,7 +86,6 @@ struct Solver {
 
     Statistics stats;
     PressureConfig pressure_cfg;
-    Eigen::SparseMatrix<float_type> some_solver;
     std::vector<float_type> some_pingpong_buffer;
     std::vector<float_type> advect_velocity_buffer;
 
