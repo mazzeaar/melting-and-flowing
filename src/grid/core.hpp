@@ -66,7 +66,7 @@ enum class Field : std::uint8_t {
 // von Neumann neighbourhood
 enum class CellState {
     SOLID,    // boundaries/walls
-    EMPTY,    // no particles
+    AIR,      // no particles
     FULL,     // #particles > 0 && all neighbours not empty
     SURFACE,  // #particles > 0 && (#empty neighbours > 0)
 };
