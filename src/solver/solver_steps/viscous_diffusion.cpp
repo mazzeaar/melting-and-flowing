@@ -2,6 +2,7 @@
 #include <Eigen/IterativeLinearSolvers>
 
 namespace solver {
+using float_type = Solver::float_type;
 
 // Step 2: Viscous Diffusion
 // u2 - dt * nu * ∇²u2   = u1 (scalar nu)
@@ -21,8 +22,50 @@ enum class Dimension : std::uint8_t {
     Z
 };
 
+void triplets(auto& triplets, const auto& pcfg, const auto& state,
+        const auto nu, const WallCondition bc, const Dimension dim, const float_type dt, 
+        const std::size_t i, const std::size_t j, const std::size_t k) {
+
+    const size_t n = pcfg.n_unkowns();
+    const size_t nx = pcfg.nx;
+    const size_t ny = pcfg.ny;
+    const size_t nz = pcfg.nz;
+
+    const float_type dx = pcfg.dx;
+    const float_type dy = pcfg.dy;     
+    const float_type dz = pcfg.dz;
+
+    const float_type idx2 = float_type{1} / (dx * dx);
+    const float_type idy2 = float_type{1} / (dy * dy);
+    const float_type idz2 = float_type{1} / (dz * dz);
+
+    const size_t r = pcfg.row(i, j, k);
+
+    // Diagonal Element 
+    triplets.emplace_back(r, r, 1 + dt * nu * 2 * (idx2 + idy2 + idz2));
+
+    // X-Axis Neighbors
+    if (i > 1 ) { triplets.emplace_back(r, pcfg.row(i - 1, j, k), -dt * nu * idx2); }
+    else { } 
+    if (i < nx) { triplets.emplace_back(r, pcfg.row(i + 1, j, k), -dt * nu * idx2); } 
+    else { } // Boundary Conditions...
+
+    // Y-Axis Neighbors
+    if (j > 1)  { triplets.emplace_back(r, pcfg.row(i, j - 1, k), -dt * nu * idy2); }
+    else { } 
+    if (j < ny) { triplets.emplace_back(r, pcfg.row(i, j + 1, k), -dt * nu * idy2); }
+    else { } 
+
+    // Z-Axis Neighbors
+    if (k > 1)  { triplets.emplace_back(r, pcfg.row(i, j, k - 1), -dt * nu * idz2); }
+    else { } 
+    if (k < nz) { triplets.emplace_back(r, pcfg.row(i, j, k + 1), -dt * nu * idz2); }
+    else { } 
+}
+
 void Solver::diffuse_velocity(Solver::Config cfg) {
 
+    const float_type dt = cfg.dt;
     auto u1 = cfg.grid.view<grid::Field::U>(); // X
     auto v1 = cfg.grid.view<grid::Field::V>(); // Y
     auto w1 = cfg.grid.view<grid::Field::W>(); // Z
@@ -30,10 +73,10 @@ void Solver::diffuse_velocity(Solver::Config cfg) {
 
     const auto& pcfg = pressure_cfg;
 
-    const auto nx = pcfg.nx;
-    const auto ny = pcfg.ny;
-    const auto nz = pcfg.nz;
-    const auto n = pcfg.n_unkowns();
+    const size_t n = pcfg.n_unkowns();
+    const size_t nx = pcfg.nx;
+    const size_t ny = pcfg.ny;
+    const size_t nz = pcfg.nz;
 
     // Placeholder...
     const auto nu = 0.3;
@@ -65,9 +108,9 @@ void Solver::diffuse_velocity(Solver::Config cfg) {
                 rhs_w(r) = w1[i, j, k];
 
                 // Populate Triplets for A
-                triplets(triplets_u, pcfg, state, nu, bc, Dimension::X, i, j, k);
-                triplets(triplets_v, pcfg, state, nu, bc, Dimension::Y, i, j, k);
-                triplets(triplets_w, pcfg, state, nu, bc, Dimension::Z, i, j, k);
+                triplets(triplets_u, pcfg, state, nu, bc, Dimension::X, dt, i, j, k);
+                triplets(triplets_v, pcfg, state, nu, bc, Dimension::Y, dt, i, j, k);
+                triplets(triplets_w, pcfg, state, nu, bc, Dimension::Z, dt, i, j, k);
             }
         }
     }
@@ -110,43 +153,6 @@ void Solver::diffuse_velocity(Solver::Config cfg) {
             }
         }
     }
-}
-
-void triplets(auto& triplets, const auto& pcfg, const auto& state,
-        const auto nu, const WallCondition bc, const Dimension dim,
-        const std::size_t i, const std::size_t j, const std::size_t k) {
-
-    const float_type dt = cfg.dt;
-    const float_type dx = pcfg.dx;
-    const float_type dy = pcfg.dy;    
-    const float_type dz = pcfg.dz;
-
-    const float_type idx2 = float_type{1} / (dx * dx);
-    const float_type idy2 = float_type{1} / (dy * dy);
-    const float_type idz2 = float_type{1} / (dz * dz);
-
-    const size_t r = pcfg.row(i, j, k);
-
-    // Diagonal Element 
-    triplets.emplace_back(r, r, 1 + dt * nu * 2 * (idx2 + idy2 + idz2));
-
-    // X-Axis Neighbors
-    if (i > 1 ) { triplets.emplace_back(r, pcfg.row(i - 1, j, k), -dt * nu * idx2); }
-    else { } 
-    if (i < nx) { triplets.emplace_back(r, pcfg.row(i + 1, j, k), -dt * nu * idx2); } 
-    else { } // Boundary Conditions...
-
-    // Y-Axis Neighbors
-    if (j > 1)  { triplets.emplace_back(r, pcfg.row(i, j - 1, k), -dt * nu * idy2); }
-    else { } 
-    if (j < ny) { triplets.emplace_back(r, pcfg.row(i, j + 1, k), -dt * nu * idy2); }
-    else { } 
-
-    // Z-Axis Neighbors
-    if (k > 1)  { triplets.emplace_back(r, pcfg.row(i, j, k - 1), -dt * nu * idz2); }
-    else { } 
-    if (k < nz) { triplets.emplace_back(r, pcfg.row(i, j, k + 1), -dt * nu * idz2); }
-    else { } 
 }
 
 }  // namespace solver 
