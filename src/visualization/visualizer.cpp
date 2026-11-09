@@ -68,7 +68,7 @@ void Visualizer::load_mesh(std::filesystem::path file) {
     if (file.extension() != ".obj") {
         throw core::Error(
             "Invalid file '{}', only *.obj is supported as of now",
-            file.extension().c_str());
+            file.extension().string());
     }
 
     mesh_ptr = std::make_unique<Mesh>(file);

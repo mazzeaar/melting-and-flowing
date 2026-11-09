@@ -125,7 +125,7 @@ struct Solver {
 
     // Step 2: Viscous diffusion
     // u2 - dt * nu * ∇²u2 = u1
-    void diffuse_velocity(Config cfg) {}
+    void diffuse_velocity(Config cfg);
 
     // Step 3: Pressure Poisson equation
     // ∇²p = (rho / dt) * ∇·u2
