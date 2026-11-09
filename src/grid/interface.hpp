@@ -75,6 +75,20 @@ template <Field FieldTag> struct FieldInterface {
                           flat_offset<Axis::Z>()};
     }
 
+    template <typename Derived>
+    constexpr auto index_at(const Eigen::MatrixBase<Derived>& p) const
+        -> Eigen::Vector3i
+        requires(detail::GeometricField<FieldTag>)
+    {
+        static_assert(Derived::SizeAtCompileTime == 3);
+        static constexpr auto Loc = detail::field_location<FieldTag>();
+        const Eigen::Vector3d point = p;
+        const auto idx = detail::Geometry<Loc>::cell(
+            std::span<const double, 3>{point.data(), 3}, geo_context);
+        return {static_cast<int>(idx[0]), static_cast<int>(idx[1]),
+                static_cast<int>(idx[2])};
+    }
+
     constexpr auto position_at(std::size_t i, std::size_t j,
                                std::size_t k) const
         -> Eigen::Vector3<Config::float_type>

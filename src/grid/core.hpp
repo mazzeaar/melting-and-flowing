@@ -69,6 +69,7 @@ enum class CellState {
     AIR,      // no particles
     FULL,     // #particles > 0 && all neighbours not empty
     SURFACE,  // #particles > 0 && (#empty neighbours > 0)
+    UNKNOWN,
 };
 
 namespace detail {

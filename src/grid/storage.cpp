@@ -1,9 +1,123 @@
 #include "grid/storage.hpp"
 
+#include <cstddef>
+
 #include "../mesh/mesh.hpp"
 #include "core.hpp"
 
 namespace grid {
+
+constexpr auto cell_index_helper(GridView gv) {
+    return [field = gv.view<Field::P>()](const auto& vec) {
+        auto v = vec;
+        return field.index_at(vec);
+    };
+}
+
+void GridView::update_cell_states(
+    const Eigen::Matrix<double, Eigen::Dynamic, 3, Eigen::RowMajor>& pos) {
+    const auto ex = config().grid_extents;
+    const Eigen::Vector3i dims = Eigen::Vector3i{
+        static_cast<int>(ex.extent(0)), static_cast<int>(ex.extent(1)),
+        static_cast<int>(ex.extent(2))};
+
+    const int nx = dims.x(), ny = dims.y(), nz = dims.z();
+
+    auto index = [=](int i, int j, int k) { return i + nx * (j + ny * k); };
+
+    auto valid = [=](int i, int j, int k) {
+        return i >= 0 && j >= 0 && k >= 0 && i < nx && j < ny && k < nz;
+    };
+
+    auto cell_index = cell_index_helper(*this);
+
+    auto state = view<Field::State>();
+    std::vector<CellState> region(static_cast<std::size_t>(nx * ny * nz),
+                                  CellState::UNKNOWN);
+
+    // 1. Voxelize the surface particles.
+    for (Eigen::Index p = 0; p < pos.rows(); ++p) {
+        Eigen::Vector3i cell = cell_index(pos.row(p).transpose());
+
+        if (valid(cell.x(), cell.y(), cell.z())) {
+            region[index(cell.x(), cell.y(), cell.z())] = CellState::SURFACE;
+        }
+    }
+
+    // 2. Flood-fill air from domain boundaries.
+    std::queue<Eigen::Vector3i> queue;
+
+    auto add_air = [&](int i, int j, int k) {
+        if (!valid(i, j, k)) {
+            return;
+        }
+
+        auto& state = region[index(i, j, k)];
+        if (state != CellState::UNKNOWN) {
+            return;
+        }
+
+        state = CellState::AIR;
+        queue.emplace(i, j, k);
+    };
+
+    for (int k = 0; k < nz; ++k) {
+        for (int j = 0; j < ny; ++j) {
+            add_air(0, j, k);
+            add_air(nx - 1, j, k);
+        }
+    }
+
+    for (int k = 0; k < nz; ++k) {
+        for (int i = 0; i < nx; ++i) {
+            add_air(i, 0, k);
+            add_air(i, ny - 1, k);
+        }
+    }
+
+    for (int j = 0; j < ny; ++j) {
+        for (int i = 0; i < nx; ++i) {
+            add_air(i, j, 0);
+            add_air(i, j, nz - 1);
+        }
+    }
+
+    constexpr std::array<Eigen::Vector3i, 6> neighbors = {
+        {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}}};
+
+    while (!queue.empty()) {
+        auto cell = queue.front();
+        queue.pop();
+
+        for (const auto& d : neighbors) {
+            auto n = cell + d;
+            add_air(n.x(), n.y(), n.z());
+        }
+    }
+
+    // 3. Update the actual grid state.
+    for (int k = 0; k < nz; ++k) {
+        for (int j = 0; j < ny; ++j) {
+            for (int i = 0; i < nx; ++i) {
+                const bool is_boundary = i == 0 || i == nx - 1 || j == 0 ||
+                                         j == ny - 1 || k == 0 || k == nz - 1;
+
+                if (is_boundary) {
+                    state[i, j, k] = CellState::SOLID;
+                    continue;
+                }
+
+                auto r = region[index(i, j, k)];
+
+                if (r == CellState::UNKNOWN) {
+                    r = CellState::FULL;
+                }
+
+                state[i, j, k] = r;
+            }
+        }
+    }
+}
 
 void GridView::initialise_cell_states(const Mesh& mesh) {
     const auto cfg = config();
@@ -78,7 +192,7 @@ void GridView::initialise_cell_states(const Mesh& mesh) {
                 if (is_boundary) {
                     state[i, j, k] = CellState::SOLID;
                 } else if (inside_count == 0) {
-                    state[i, j, k] = CellState::EMPTY;
+                    state[i, j, k] = CellState::AIR;
                 } else if (inside_count == samples_per_cell) {
                     state[i, j, k] = CellState::SOLID;
                 } else {

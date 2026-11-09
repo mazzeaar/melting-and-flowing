@@ -25,7 +25,9 @@ auto interpolate_velocity(GridView grid,
 
 // Step 8: update particle positions
 void solver::Solver::advect_particles(Config cfg) {
-    auto dt = cfg.dt;
+    using Vec3 = Eigen::Vector3<grid::Config::float_type>;
+
+    const auto dt = cfg.dt;
     auto grid = cfg.grid;
     auto particles = cfg.particles;
 
@@ -34,9 +36,28 @@ void solver::Solver::advect_particles(Config cfg) {
             "Solver::advect_particles received config without particles");
     }
 
-    // Eigen::Matrix<double, Eigen::Dynamic, 3, Eigen::RowMajor>;
+    const auto& conf = grid.config();
+
+    const Vec3 lower{
+        conf.lowest_corner[0],
+        conf.lowest_corner[1],
+        conf.lowest_corner[2],
+    };
+
+    const Vec3 upper = lower + Vec3{
+                                   conf.grid_size[0],
+                                   conf.grid_size[1],
+                                   conf.grid_size[2],
+                               };
+
     for (Eigen::Index row = 0; row < particles->rows(); ++row) {
-        auto point = particles->row(row);
-        point += dt * interpolate_velocity(grid, point);
+        const Vec3 point = particles->row(row).transpose();
+
+        const Vec3 velocity = interpolate_velocity(grid, point);
+
+        const Vec3 next =
+            (point + dt * velocity).cwiseMax(lower).cwiseMin(upper);
+
+        particles->row(row) = next.transpose();
     }
 }

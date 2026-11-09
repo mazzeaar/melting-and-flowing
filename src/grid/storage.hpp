@@ -95,6 +95,8 @@ class GridView {
     // here as well idk
 
     void initialise_cell_states(const Mesh& mesh);
+    void update_cell_states(
+        const Eigen::Matrix<double, Eigen::Dynamic, 3, Eigen::RowMajor>& pos);
 
     void advect_particles(Eigen::MatrixXd& positions) const;
 

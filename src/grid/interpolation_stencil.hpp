@@ -46,11 +46,13 @@ struct InterpolationStencil {
             assert(cell_size[axis] > 0.0);
         }
 
+        static constexpr double eps = 1e-10;
         auto t = std::array<double, 3>{};
         for (std::size_t axis = 0; axis < 3; ++axis) {
             t[axis] =
                 (target_point[axis] - min_corner_pos[axis]) / cell_size[axis];
-            assert(t[axis] >= 0.0 && t[axis] <= 1.0);
+            assert(t[axis] >= -eps && t[axis] <= 1.0 + eps);
+            t[axis] = std::clamp(t[axis], 0.0, 1.0);
         }
 
         for (std::size_t i = 0; i < n_neighbours; ++i) {

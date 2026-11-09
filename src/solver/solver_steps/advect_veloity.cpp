@@ -114,6 +114,11 @@ void Solver::advect_velocity(Config cfg) {
             }
         }
     }
+
+    auto velocity_view = grid.view<Field::Velocities>();
+    for (std::size_t i = 0; i < advect_velocity_buffer.size(); ++i) {
+        velocity_view[i] = advect_velocity_buffer[i];
+    }
 }
 
 }  // namespace solver

@@ -29,6 +29,7 @@ struct Visualizer {
 
     void init();
     void update();
+    void reset();
     void step();
     void callback();
     void draw_controls();

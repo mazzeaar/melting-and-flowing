@@ -114,6 +114,35 @@ void Visualizer::draw_controls() {
     ImGui::Text("File: %s", sim_.mesh_path.filename().c_str());
     ImGui::Text("Step: %zu", sim_.step_count);
     ImGui::Text("Time: %.6g", sim_.time);
+
+    ImGui::Separator();
+
+    // Play / Pause
+    if (ImGui::Button(running_ ? "Pause" : "Play")) {
+        running_ = !running_;
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Step")) {
+        running_ = false;
+        step();
+        update();
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Reset")) {
+        reset();
+    }
+
+    ImGui::Separator();
+
+    ImGui::InputDouble("dt", &dt_, 0.001, 0.01, "%.6g");
+    ImGui::SliderInt("Steps / frame", &steps_per_frame_, 1, 100);
+
+    // Don't allow negative timesteps.
+    dt_ = std::max(dt_, 0.0);
 }
 
 void Visualizer::step() {
@@ -165,12 +194,17 @@ void Visualizer::update_grid() {
     const int ny = ext.extent(1);
     const int nz = ext.extent(2);
 
-    const glm::vec3 lower{cfg.lowest_corner[0], cfg.lowest_corner[1],
-                          cfg.lowest_corner[2]};
+    const glm::vec3 lower{
+        cfg.lowest_corner[0],
+        cfg.lowest_corner[1],
+        cfg.lowest_corner[2],
+    };
 
-    const glm::vec3 upper{lower.x + cfg.grid_size[0],
-                          lower.y + cfg.grid_size[1],
-                          lower.z + cfg.grid_size[2]};
+    const glm::vec3 upper{
+        lower.x + cfg.grid_size[0],
+        lower.y + cfg.grid_size[1],
+        lower.z + cfg.grid_size[2],
+    };
 
     // Polyscope requires X to vary fastest.
     std::vector<float> values(nx * ny * nz);
@@ -186,16 +220,42 @@ void Visualizer::update_grid() {
         }
     }
 
-    auto* ps_grid = polyscope::registerVolumeGrid(
-        "Fluid Grid", glm::uvec3{nx + 1, ny + 1, nz + 1}, lower, upper);
+    // Register the grid only once.
+    auto* ps_grid = polyscope::hasVolumeGrid("Fluid Grid")
+                        ? polyscope::getVolumeGrid("Fluid Grid")
+                        : polyscope::registerVolumeGrid(
+                              "Fluid Grid", glm::uvec3{nx + 1, ny + 1, nz + 1},
+                              lower, upper);
 
-    ps_grid->setEnabled(true);
-    ps_grid->setEdgeWidth(0.5);
+    // Update the existing scalar quantity without replacing it.
+    auto* quantity =
+        ps_grid->getStructureQuantity<polyscope::VolumeGridCellScalarQuantity>(
+            "Cell State");
 
-    auto* quantity = ps_grid->addCellScalarQuantity(
-        "Cell State", values, polyscope::DataType::CATEGORICAL);
+    if (quantity) {
+        quantity->updateData(values);
+    } else {
+        quantity = ps_grid->addCellScalarQuantity(
+            "Cell State", values, polyscope::DataType::CATEGORICAL);
 
-    quantity->setEnabled(true);
+        // Only enable when first created.
+        quantity->setEnabled(true);
+    }
+}
+
+void Visualizer::reset() {
+    running_ = false;
+
+    if (!mesh_ptr) {
+        return;
+    }
+
+    sim_.load_mesh(mesh_ptr);
+
+    sim_.time = 0.0;
+    sim_.step_count = 0;
+
+    update();
 }
 
 }  // namespace visualization
