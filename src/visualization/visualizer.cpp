@@ -62,7 +62,7 @@ void Visualizer::load_mesh(std::span<const std::string> files) {
         if (file.extension() != ".obj") {
             throw core::Error(
                 "Invalid file '{}', only *.obj is supported as of now",
-                file.extension().c_str());
+                file.extension().string());
         }
 
         mesh_ptr = std::make_unique<Mesh>(file);
@@ -92,7 +92,7 @@ void Visualizer::draw_controls() {
     ImGui::Text("Melting and Flowing");
     ImGui::Separator();
 
-    ImGui::Text("File: %s", sim_.mesh_path.filename().c_str());
+    ImGui::Text("File: %s", sim_.mesh_path.filename().string().c_str());
     ImGui::Text("Step: %zu", sim_.step_count);
     ImGui::Text("Time: %.6g", sim_.time);
 }
