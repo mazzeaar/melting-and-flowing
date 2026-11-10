@@ -94,6 +94,7 @@ struct Solver {
     Statistics stats;
     PressureConfig pressure_cfg;
     std::vector<float_type> advect_velocity_buffer;
+    std::vector<float_type> advect_temperature_buffer;
 
     // Viscous diffusion buffers
     Eigen::VectorX<float_type> viscosity_rhs_u, viscosity_rhs_v,
@@ -104,6 +105,16 @@ struct Solver {
     Eigen::SparseMatrix<float_type> viscosity_A_u, viscosity_A_v, viscosity_A_w;
     Eigen::ConjugateGradient<Eigen::SparseMatrix<float_type>>
         viscosity_solver_u, viscosity_solver_v, viscosity_solver_w;
+
+    Eigen::SparseMatrix<float_type> temperature_A;
+    Eigen::VectorX<float_type> temperature_rhs;
+    Eigen::VectorX<float_type> temperature_T2;
+
+    std::vector<Eigen::Triplet<float_type>> temperature_triplets;
+
+    Eigen::ConjugateGradient<Eigen::SparseMatrix<float_type>,
+                             Eigen::Lower | Eigen::Upper>
+        temperature_solver;
 
    public:
     Solver() = default;

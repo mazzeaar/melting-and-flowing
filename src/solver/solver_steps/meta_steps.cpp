@@ -36,6 +36,19 @@ void Solver::prepare(Solver::Config cfg) {
         viscosity_A_v.resize(n, n);
         viscosity_A_w.resize(n, n);
     }
+
+    {  // temperature advection buffer
+        const auto n = static_cast<Eigen::Index>(
+            cfg.grid.config().grid_mapping.required_span_size());
+        advect_temperature_buffer.resize(n);
+
+        // Temperature diffusion buffers
+        temperature_rhs.resize(n);
+        temperature_T2.resize(n);
+
+        temperature_triplets.reserve(7 * n);
+        temperature_A.resize(n, n);
+    }
 }
 
 // one full timestep

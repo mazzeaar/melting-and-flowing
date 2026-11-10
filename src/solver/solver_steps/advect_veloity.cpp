@@ -7,8 +7,9 @@
 namespace solver {
 
 template <grid::Field F>
-auto interpolate_field(grid::FieldInterface<F> field,
-                       const Eigen::Vector3<grid::Config::float_type>& pos) {
+inline auto interpolate_field(
+    grid::FieldInterface<F> field,
+    const Eigen::Vector3<grid::Config::float_type>& pos) {
     auto stencil = field.interpolation_stencil(pos);
     return std::ranges::fold_left(
         std::views::zip(stencil.weights(), stencil.neighbours()),
@@ -19,8 +20,8 @@ auto interpolate_field(grid::FieldInterface<F> field,
         });
 }
 
-auto interpolate_velocity(GridView grid,
-                          const Eigen::Vector3<grid::Config::float_type>& pos)
+inline auto interpolate_velocity(
+    GridView grid, const Eigen::Vector3<grid::Config::float_type>& pos)
     -> Eigen::Vector3<grid::Config::float_type> {
     return {
         interpolate_field(grid.view<grid::Field::U>(), pos),
