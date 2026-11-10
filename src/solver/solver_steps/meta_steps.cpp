@@ -7,13 +7,35 @@ void Solver::prepare(Solver::Config cfg) {
     Log("[Solver] Preparing solver");
     pressure_cfg.from(cfg.grid.config());
     Log("[Solver] Finished preparing pressure config");
-    // stuff that we only have to do once per grid
-    // - memory allocations
-    // - set up stencils and then:
-    // https://libeigen.gitlab.io/eigen/docs-5.0.1/group__TopicSparseSystems.html#:~:text=The%20Compute%20Step,with%20other%20matrices.
 
-    // buffer for step 0, advect_velocity, has size 3xN_cells
-    cfg.grid.resize_like<grid::Field::Velocities>(advect_velocity_buffer);
+    {  // velocity buffer
+        // has size: size(U) + size(V) + size(W)
+        cfg.grid.resize_like<grid::Field::Velocities>(advect_velocity_buffer);
+    }
+
+    {  // viscosity buffers
+        const auto n = static_cast<Eigen::Index>(pressure_cfg.n_unkowns());
+
+        // RHS buffers
+        viscosity_rhs_u.resize(n);
+        viscosity_rhs_v.resize(n);
+        viscosity_rhs_w.resize(n);
+
+        // Solution buffers
+        viscosity_u2.resize(n);
+        viscosity_v2.resize(n);
+        viscosity_w2.resize(n);
+
+        // Triplet buffers
+        viscosity_triplets_u.reserve(7 * n);
+        viscosity_triplets_v.reserve(7 * n);
+        viscosity_triplets_w.reserve(7 * n);
+
+        // Sparse matrices
+        viscosity_A_u.resize(n, n);
+        viscosity_A_v.resize(n, n);
+        viscosity_A_w.resize(n, n);
+    }
 }
 
 // one full timestep

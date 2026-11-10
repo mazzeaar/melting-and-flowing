@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Eigen/Sparse>
 #include <chrono>
 #include <core/log.hpp>
 #include <cstddef>
@@ -92,8 +93,17 @@ struct Solver {
 
     Statistics stats;
     PressureConfig pressure_cfg;
-    std::vector<float_type> some_pingpong_buffer;
     std::vector<float_type> advect_velocity_buffer;
+
+    // Viscous diffusion buffers
+    Eigen::VectorX<float_type> viscosity_rhs_u, viscosity_rhs_v,
+        viscosity_rhs_w;
+    Eigen::VectorX<float_type> viscosity_u2, viscosity_v2, viscosity_w2;
+    std::vector<Eigen::Triplet<float_type>> viscosity_triplets_u,
+        viscosity_triplets_v, viscosity_triplets_w;
+    Eigen::SparseMatrix<float_type> viscosity_A_u, viscosity_A_v, viscosity_A_w;
+    Eigen::ConjugateGradient<Eigen::SparseMatrix<float_type>>
+        viscosity_solver_u, viscosity_solver_v, viscosity_solver_w;
 
    public:
     Solver() = default;
@@ -140,15 +150,15 @@ struct Solver {
 
     // Step 5: Temperature advection
     // T1 = T_old - dt * (u_new · ∇)T_old
-    void advect_temperature(Config cfg) {}
+    void advect_temperature(Config cfg);
 
     // Step 6: Temperature diffusion
     // T_new - dt * kappa * ∇²T_new = T1
-    void diffuse_temperature(Config cfg) {}
+    void diffuse_temperature(Config cfg);
 
     // Step 7: Update viscosity from temperature
     // eta_new = eta(T_new)
-    void update_viscosity(Config cfg) {}
+    void update_viscosity(Config cfg);
 
     // Step 8: update particle positions
     void advect_particles(Config cfg);
