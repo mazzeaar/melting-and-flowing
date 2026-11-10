@@ -55,7 +55,8 @@ struct Storage {
         auto field_size = self.config.grid_mapping.required_span_size();
 
         using enum Field;
-        if constexpr (std::ranges::contains(std::array{U, V, W, P}, F)) {
+        if constexpr (std::ranges::contains(std::array{U, V, W, P, T, ETA},
+                                            F)) {
             return FieldInterface<F>{
                 {self.flat_storage.data() + (field_size * field_offset),
                  field_size},
@@ -102,6 +103,10 @@ class GridView {
 
     template <Field F> constexpr auto view(this auto&& self) {
         return self.storage->template view<F>();
+    }
+
+    template <Field F> constexpr auto flat_view(this auto&& self) {
+        return self.storage->template view<F>().flat_view();
     }
 
     template <Field F, class T>

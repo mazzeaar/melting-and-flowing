@@ -22,5 +22,5 @@ Particles::Particles(Config conf, grid::Config grid_config,
                                mesh_ptr->faces, barycentric, face_indices,
                                positions);
 
-    std::println("Generated {} surface particles", positions.rows());
+    Log("Generated {} surface particles", positions.rows());
 }
