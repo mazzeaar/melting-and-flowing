@@ -58,6 +58,7 @@ enum class Field : std::uint8_t {
     W,
     P,
     T,
+    ETA,
     COUNT,
     Velocities,  // combines all 3 velocities into one, for solvers
     State,
