@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "mesh.hpp"
+#include "settings.hpp"
 
 // ============================================================
 // CellState enum and comparison helpers.
@@ -42,7 +43,8 @@ struct Grid;  // forward declaration
 //      - only interior         -> full
 //      - at least one surface  -> surface
 //      - grid boundaries       -> solid (for now? maybe more later idk)
-void initialise_cell_states(Grid& grid, const Mesh* mesh);
+void initialise_cell_states(Grid& grid, const Mesh* mesh,
+                            int samples_per_cell_axis = 4);
 void update_cell_states(Grid& grid, const Eigen::MatrixXf& surface_particles);
 
 void mark_surface_cells(Grid& grid);
@@ -59,7 +61,7 @@ auto index_of(const Grid& grid, const Eigen::Vector3f& point) -> std::size_t;
 auto interpolate_field(const Eigen::VectorXf& field,
                        const Eigen::Vector3i& field_extents,
                        const Eigen::Vector3f& field_offset,
-                       const Eigen::Vector3f& point) -> float;
+                       const Eigen::Vector3f& sample_point) -> float;
 
 // velocity interpolation in physical coordinates
 auto interpolate_velocity(const Grid& grid, const Eigen::Vector3f& point)
@@ -74,6 +76,8 @@ struct Grid {
        public:
         Config(Eigen::Vector3f min_corner, Eigen::Vector3f physical_size,
                Eigen::Vector3i extents);
+
+        Config(SimulationSettings::GridSettings settings);
 
         static auto Uniform(Eigen::Vector3f min_corner, float dx, int extents)
             -> Config;
@@ -120,10 +124,13 @@ struct Grid {
     Config _config;
 
    public:
-    explicit Grid(Config grid_config);
+    explicit Grid(Config grid_config,
+                  const SimulationSettings::PhysicsSettings& physics);
 
     auto config() const -> const Config& { return _config; }
-    void resize(Config cfg);
+
+    void resize(Config cfg, const SimulationSettings::PhysicsSettings& physics);
+    void resize(Config cfg, float initial_temp, float initial_eta);
 
     Eigen::VectorXf u, v, w, p, t, eta;
     Eigen::VectorXi cell_state;
@@ -151,7 +158,7 @@ inline auto Grid::Config::extents_w() const -> Eigen::Vector3i {
 // indexing
 
 template <std::integral I, std::integral J, std::integral K>
-auto Grid::Config::index(const Eigen::Vector3i& e, I i, J j, K k)
+inline auto Grid::Config::index(const Eigen::Vector3i& e, I i, J j, K k)
     -> std::size_t {
     return static_cast<std::size_t>(i) +
            static_cast<std::size_t>(e.x()) *
@@ -159,8 +166,8 @@ auto Grid::Config::index(const Eigen::Vector3i& e, I i, J j, K k)
                 static_cast<std::size_t>(e.y()) * static_cast<std::size_t>(k));
 }
 
-auto Grid::Config::index(const Eigen::Vector3i& e, const Eigen::Vector3i& id)
-    -> std::size_t {
+inline auto Grid::Config::index(const Eigen::Vector3i& e,
+                                const Eigen::Vector3i& id) -> std::size_t {
     return index(e, id.x(), id.y(), id.z());
 }
 
