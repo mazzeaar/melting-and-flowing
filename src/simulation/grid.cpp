@@ -2,16 +2,20 @@
 
 #include <Eigen/Core>
 
-Grid::Config::Config(Eigen::Vector3f lowest_corner,
-                     Eigen::Vector3f physical_grid_size,
-                     Eigen::Vector3i grid_extents)
-    : _min_corner{lowest_corner},
-      _physical_size{physical_grid_size},
-      _cell_extents{grid_extents} {
-    if (!_min_corner.allFinite() || !_physical_size.allFinite() ||
-        (_physical_size.array() <= 0).any() ||
-        (_cell_extents.array() < 2).any()) {
-        throw std::invalid_argument(
+#include "core/exception.hpp"
+
+Grid::Config::Config(Eigen::Vector3f min_corner, Eigen::Vector3f physical_size,
+                     Eigen::Vector3i extents)
+    : _min_corner{min_corner},
+      _physical_size{physical_size},
+      _cell_extents{extents} {
+    const auto all_finite =
+        _min_corner.allFinite() && _physical_size.allFinite();
+    const auto all_positive = (_physical_size.array() > 0).all() &&
+                              (_cell_extents.array() >= 2).all();
+
+    if (!all_finite || !all_positive) {
+        throw core::Error(
             "Grid requires positive finite dimensions and at least 2 "
             "cells per axis");
     }
@@ -285,23 +289,42 @@ void enforce_velocity_boundaries(Grid& grid) {
 void mark_surface_cells(Grid& grid) {
     const auto gc = grid.config();
     const auto ex = gc.extents();
-    const std::array<Eigen::Vector3i, 6> dirs = {
-        {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}}};
+
+    static constexpr std::array<Eigen::Vector3i, 6> dirs = {
+        {
+            {1, 0, 0},
+            {-1, 0, 0},
+            {0, 1, 0},
+            {0, -1, 0},
+            {0, 0, 1},
+            {0, 0, -1},
+        },
+    };
+
     for (int k = 0; k < ex.z(); ++k) {
         for (int j = 0; j < ex.y(); ++j) {
             for (int i = 0; i < ex.x(); ++i) {
                 auto& state = grid.cell_state[gc.cell(i, j, k)];
+
                 if (state != CellState::FULL) {
                     continue;
                 }
+
                 for (const auto& d : dirs) {
-                    const Eigen::Vector3i q = Eigen::Vector3i{i, j, k} + d;
-                    if ((q.array() >= ex.array()).any() ||
-                        (q.array() < 0).any()) {
+                    auto q = Eigen::Vector3i{i, j, k} + d;
+
+                    auto a = (q.array() < ex.array()).all();
+                    auto b = (q.array() < 0).any();
+                    auto valid_grid_index = a && b;
+                    if (!valid_grid_index) {
                         continue;
                     }
-                    if (grid.cell_state[gc.cell(q.x(), q.y(), q.z())] ==
-                        CellState::AIR) {
+
+                    auto is_air =
+                        grid.cell_state[gc.cell(q.x(), q.y(), q.z())] ==
+                        CellState::AIR;
+
+                    if (is_air) {
                         state = std::to_underlying(CellState::SURFACE);
                         break;
                     }
@@ -313,34 +336,44 @@ void mark_surface_cells(Grid& grid) {
 
 void initialise_cell_states(Grid& grid, const Mesh* mesh) {
     if (!mesh) {
-        throw std::invalid_argument("Cannot initialize grid without a mesh");
+        throw core::Error("Cannot initialize grid without a mesh");
     }
 
     const auto gc = grid.config();
     const auto ex = gc.extents();
-    constexpr int samples = 4, per_cell = samples * samples * samples;
+
+    constexpr int num_samples = 4;
+    constexpr int per_cell = num_samples * num_samples * num_samples;
+
     Eigen::MatrixXf points(static_cast<Eigen::Index>(gc.size()) * per_cell, 3);
-    for (int k = 0; k < ex.z(); ++k) {
-        for (int j = 0; j < ex.y(); ++j) {
-            for (int i = 0; i < ex.x(); ++i) {
-                int s = 0;
-                for (int z = 0; z < samples; ++z) {
-                    for (int y = 0; y < samples; ++y) {
-                        for (int x = 0; x < samples; ++x) {
-                            const Eigen::Vector3f q =
-                                Eigen::Vector3f{float(i), float(j), float(k)} +
-                                Eigen::Vector3f{x + 0.5f, y + 0.5f, z + 0.5f} /
-                                    samples;
-                            points.row(gc.cell(i, j, k) * per_cell + s++) =
-                                (gc.min_corner() +
-                                 q.cwiseProduct(gc.cell_size()))
-                                    .transpose();
-                        }
-                    }
+
+    auto sample_cell = [&](auto i, auto j, auto k) {
+        const auto cell_anchor = Eigen::Vector3i{i, j, k}.cast<float>();
+        const auto cell_center = Eigen::Vector3f::Constant(0.5);
+
+        int s = 0;
+        for (int z = 0; z < num_samples; ++z) {
+            for (int y = 0; y < num_samples; ++y) {
+                for (int x = 0; x < num_samples; ++x) {
+                    auto cell_offset =
+                        Eigen::Vector3i{x, y, z}.cast<float>() + cell_center;
+                    auto point = cell_anchor + cell_offset / num_samples;
+                    points.row(gc.cell(i, j, k) * per_cell + s++) =
+                        (gc.min_corner() + point.cwiseProduct(gc.cell_size()))
+                            .transpose();
                 }
             }
         }
+    };
+
+    for (int k = 0; k < ex.z(); ++k) {
+        for (int j = 0; j < ex.y(); ++j) {
+            for (int i = 0; i < ex.x(); ++i) {
+                sample_cell(i, j, k);
+            }
+        }
     }
+
     const auto inside = mesh->contains_many(points);
     for (Eigen::Index r = 0; r < grid.cell_state.size(); ++r) {
         const bool occupied = inside.segment(r * per_cell, per_cell).any();

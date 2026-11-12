@@ -101,6 +101,19 @@ struct Grid {
         auto u(auto i, auto j, auto k) const -> std::size_t;
         auto v(auto i, auto j, auto k) const -> std::size_t;
         auto w(auto i, auto j, auto k) const -> std::size_t;
+
+        auto cell(const Eigen::Vector3i& id) const -> std::size_t;
+        auto u(const Eigen::Vector3i& id) const -> std::size_t;
+        auto v(const Eigen::Vector3i& id) const -> std::size_t;
+        auto w(const Eigen::Vector3i& id) const -> std::size_t;
+
+       private:
+        template <std::integral I, std::integral J, std::integral K>
+        static auto index(const Eigen::Vector3i& e, I i, J j, K k)
+            -> std::size_t;
+
+        static auto index(const Eigen::Vector3i& e, const Eigen::Vector3i& id)
+            -> std::size_t;
     };
 
    private:
@@ -136,50 +149,49 @@ inline auto Grid::Config::extents_w() const -> Eigen::Vector3i {
 
 // ============================================================
 // indexing
+
+template <std::integral I, std::integral J, std::integral K>
+auto Grid::Config::index(const Eigen::Vector3i& e, I i, J j, K k)
+    -> std::size_t {
+    return static_cast<std::size_t>(i) +
+           static_cast<std::size_t>(e.x()) *
+               (static_cast<std::size_t>(j) +
+                static_cast<std::size_t>(e.y()) * static_cast<std::size_t>(k));
+}
+
+auto Grid::Config::index(const Eigen::Vector3i& e, const Eigen::Vector3i& id)
+    -> std::size_t {
+    return index(e, id.x(), id.y(), id.z());
+}
+
 inline auto Grid::Config::cell(auto i, auto j, auto k) const -> std::size_t {
-    const auto e = extents();
-
-    assert(i >= 0 && i < e.x());
-    assert(j >= 0 && j < e.y());
-    assert(k >= 0 && k < e.z());
-
-    return std::size_t(i) +
-           std::size_t(e.x()) *
-               (std::size_t(j) + std::size_t(e.y()) * std::size_t(k));
+    return index(extents(), i, j, k);
 }
 
 inline auto Grid::Config::u(auto i, auto j, auto k) const -> std::size_t {
-    const auto e = extents_u();
-
-    assert(i >= 0 && i < e.x());
-    assert(j >= 0 && j < e.y());
-    assert(k >= 0 && k < e.z());
-
-    return std::size_t(i) +
-           std::size_t(e.x()) *
-               (std::size_t(j) + std::size_t(e.y()) * std::size_t(k));
+    return index(extents_u(), i, j, k);
 }
 
 inline auto Grid::Config::v(auto i, auto j, auto k) const -> std::size_t {
-    const auto e = extents_v();
-
-    assert(i >= 0 && i < e.x());
-    assert(j >= 0 && j < e.y());
-    assert(k >= 0 && k < e.z());
-
-    return std::size_t(i) +
-           std::size_t(e.x()) *
-               (std::size_t(j) + std::size_t(e.y()) * std::size_t(k));
+    return index(extents_v(), i, j, k);
 }
 
 inline auto Grid::Config::w(auto i, auto j, auto k) const -> std::size_t {
-    const auto e = extents_w();
+    return index(extents_w(), i, j, k);
+}
 
-    assert(i >= 0 && i < e.x());
-    assert(j >= 0 && j < e.y());
-    assert(k >= 0 && k < e.z());
+inline auto Grid::Config::cell(const Eigen::Vector3i& id) const -> std::size_t {
+    return index(extents(), id);
+}
 
-    return std::size_t(i) +
-           std::size_t(e.x()) *
-               (std::size_t(j) + std::size_t(e.y()) * std::size_t(k));
+inline auto Grid::Config::u(const Eigen::Vector3i& id) const -> std::size_t {
+    return index(extents_u(), id);
+}
+
+inline auto Grid::Config::v(const Eigen::Vector3i& id) const -> std::size_t {
+    return index(extents_v(), id);
+}
+
+inline auto Grid::Config::w(const Eigen::Vector3i& id) const -> std::size_t {
+    return index(extents_w(), id);
 }
