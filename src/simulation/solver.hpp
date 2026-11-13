@@ -40,14 +40,21 @@ struct Solver {
     friend struct PressureTest;
 
     Statistics stats;
+
+    Eigen::VectorXf buff_mat_u1, buff_mat_v1, buff_mat_w1;
+    Eigen::VectorXf buff_mat_u2, buff_mat_v2, buff_mat_w2;
+    Eigen::VectorXi buff_mat_cell;
+
+    std::vector<Eigen::Triplet<float_type>> trip_u, trip_v, trip_w;
+
     Eigen::VectorXf advect_velocity_buffer;
     Eigen::VectorXf advect_temperature_buffer;
 
     // Viscous diffusion buffers
-    Eigen::VectorXf viscosity_rhs_u, viscosity_rhs_v, viscosity_rhs_w;
-    Eigen::VectorXf viscosity_u2, viscosity_v2, viscosity_w2;
-    std::vector<Eigen::Triplet<float_type>> viscosity_triplets_u,
-        viscosity_triplets_v, viscosity_triplets_w;
+    // Eigen::VectorXf viscosity_rhs_u, viscosity_rhs_v, viscosity_rhs_w;
+    // Eigen::VectorXf viscosity_u2, viscosity_v2, viscosity_w2;
+    // std::vector<Eigen::Triplet<float_type>> viscosity_triplets_u,
+    //     viscosity_triplets_v, viscosity_triplets_w;
     Eigen::SparseMatrix<float_type> viscosity_A_u, viscosity_A_v, viscosity_A_w;
     Eigen::ConjugateGradient<Eigen::SparseMatrix<float_type>>
         viscosity_solver_u, viscosity_solver_v, viscosity_solver_w;

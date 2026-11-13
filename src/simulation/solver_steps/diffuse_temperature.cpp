@@ -18,7 +18,6 @@ void Solver::diffuse_temperature(Config cfg) {
     const int ny = ex.y();
     const int nz = ex.z();
 
-    // TODO: Replace with material thermal diffusivity.
     const auto dt = cfg.settings.dt;
     const auto thermal_diffusivity = cfg.physics.diffusivity;
 

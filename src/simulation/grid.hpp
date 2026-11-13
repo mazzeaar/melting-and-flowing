@@ -45,16 +45,11 @@ struct Grid;  // forward declaration
 //      - grid boundaries       -> solid (for now? maybe more later idk)
 void initialise_cell_states(Grid& grid, const Mesh* mesh,
                             int samples_per_cell_axis = 4);
+
 void update_cell_states(Grid& grid, const Eigen::MatrixXf& surface_particles);
 
 void mark_surface_cells(Grid& grid);
 void enforce_velocity_boundaries(Grid& grid);
-
-// point contained in physical domain?
-auto contains_point(const Grid& grid, const Eigen::Vector3f& point) -> bool;
-
-// get (flat) cell index containing point
-auto index_of(const Grid& grid, const Eigen::Vector3f& point) -> std::size_t;
 
 // trilinear interpolation.
 // point and field_offset are expressed in cell coordinates.
@@ -131,6 +126,12 @@ struct Grid {
 
     void resize(Config cfg, const SimulationSettings::PhysicsSettings& physics);
     void resize(Config cfg, float initial_temp, float initial_eta);
+
+    // point contained in physical domain?
+    auto contains_point(const Eigen::Vector3f& point) const -> bool;
+
+    // get (flat) cell index containing point
+    auto index_of(const Eigen::Vector3f& point) const -> std::size_t;
 
     Eigen::VectorXf u, v, w, p, t, eta;
     Eigen::VectorXi cell_state;

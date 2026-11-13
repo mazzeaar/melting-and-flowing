@@ -13,7 +13,7 @@ struct SimulationSettings {
     struct SolverSettings {
         float dt = 1.0f / 60.0f;
         float cfl = 0.5f;
-        std::size_t max_substeps = 128;
+        std::size_t max_substeps = 1024;  // for eigen solvers
         std::size_t max_steps = 0;
 
         int max_solver_iterations = 1000;

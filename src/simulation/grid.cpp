@@ -120,18 +120,18 @@ void Grid::resize(Config cfg, float initial_temp, float initial_eta) {
 
 // ------------------------------------------------------------
 // geometry checks
-auto contains_point(const Grid& grid, const Eigen::Vector3f& point) -> bool {
-    const auto min = grid.config().min_corner();
-    const Eigen::Vector3f max = grid.config().max_corner();
+auto Grid::contains_point(const Eigen::Vector3f& point) const -> bool {
+    const auto min = config().min_corner();
+    const Eigen::Vector3f max = config().max_corner();
 
     return (point.array() >= min.array()).all() &&
            (point.array() <= max.array()).all();
 }
 
-auto index_of(const Grid& grid, const Eigen::Vector3f& point) -> std::size_t {
-    assert(contains_point(grid, point));
+auto Grid::index_of(const Eigen::Vector3f& point) const -> std::size_t {
+    assert(grid.contains_point(point));
 
-    const auto& cfg = grid.config();
+    const auto& cfg = config();
 
     const Eigen::Vector3f local =
         (point - cfg.min_corner()).cwiseQuotient(cfg.cell_size());
@@ -231,13 +231,14 @@ void enforce_velocity_boundaries(Grid& grid) {
         [&](int i, int j, int k) { return gc.w(i, j, k); }, 2);
 }
 
-// PRE: cell states are already initialised through initialise_cell_states()
 // this function walks through all cells.
 // if a cell is FULL and any (Neumann) neighbour is AIR then its a surface
 // particle
+// PRE: cell states are already initialised through initialise_cell_states()
 void mark_surface_cells(Grid& grid) {
     const auto gc = grid.config();
     const auto ex = gc.extents();
+
     static constexpr const std::array<Eigen::Vector3i, 6> neighbour_offsets = {
         {
             {1, 0, 0},
@@ -263,7 +264,8 @@ void mark_surface_cells(Grid& grid) {
             for (int i = 0; i < ex.x(); ++i) {
                 auto& state = grid.cell_state[gc.cell(i, j, k)];
 
-                // we only need to decide if full cells are on a boundary or not
+                // only need to decide for full cells if they are on a boundary
+                // or not
                 if (state != CellState::FULL) {
                     continue;
                 }
@@ -369,11 +371,11 @@ void update_cell_states(Grid& grid, const Eigen::MatrixXf& surface_particles) {
 
     for (Eigen::Index r = 0; r < surface_particles.rows(); ++r) {
         const Eigen::Vector3f point = surface_particles.row(r).transpose();
-        if (!point.allFinite() || !contains_point(grid, point)) {
+        if (!point.allFinite() || !grid.contains_point(point)) {
             continue;
         }
 
-        const auto cell = index_of(grid, point);
+        const auto cell = grid.index_of(point);
         if (region[cell] != CellState::SOLID) {
             region[cell] = std::to_underlying(CellState::SURFACE);
         }

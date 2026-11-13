@@ -1,3 +1,5 @@
+#include <utility>
+
 #include "../solver.hpp"
 #include "Eigen/Core"
 
@@ -20,21 +22,20 @@ void Solver::advect_velocity(Config cfg) {
     const auto h = gcfg.cell_size();
     const auto origin = gcfg.min_corner();
 
-    const Eigen::Vector3f gravity{0.0f, cfg.physics.gravity, 0.0f};
+    const auto gravity = Eigen::Vector3f{0.0f, cfg.physics.gravity, 0.0f};
 
+    enum class Axis { X, Y, Z };
+
+    // this is slow
     // advect one staggered velocity component.
     auto advect_component = [&](const Eigen::VectorXf& field,
                                 Eigen::Vector3i extents, Eigen::Vector3f offset,
-                                std::size_t buffer_offset, int component) {
-        const int nx = extents.x();
-        const int ny = extents.y();
-        const int nz = extents.z();
-
-        for (int i = 0; i < nx; ++i) {
-            for (int j = 0; j < ny; ++j) {
-                for (int k = 0; k < nz; ++k) {
-                    const auto idx =
-                        static_cast<std::size_t>(i + nx * (j + ny * k));
+                                Eigen::VectorXf& buffer, auto&& index_func,
+                                Axis axis) {
+        for (int i = 0; i < extents.x(); ++i) {
+            for (int j = 0; j < extents.y(); ++j) {
+                for (int k = 0; k < extents.z(); ++k) {
+                    const auto idx = index_func(i, j, k);
 
                     const Eigen::Vector3f cell{
                         static_cast<float>(i),
@@ -43,36 +44,32 @@ void Solver::advect_velocity(Config cfg) {
                     };
 
                     // staggered field position in physical coordinates
-                    const Eigen::Vector3f pos =
-                        origin + (cell + offset).cwiseProduct(h);
+                    const auto pos = origin + (cell + offset).cwiseProduct(h);
 
                     // keep boundary values unchanged
-                    if (!contains_point(grid, pos)) {
-                        advect_velocity_buffer[buffer_offset + idx] =
-                            field[idx];
+                    if (!grid.contains_point(pos)) {
+                        buffer[idx] = field[idx];
                         continue;
                     }
 
+                    // this is slow
                     // backtrace through the old velocity field
-                    const Eigen::Vector3f velocity =
-                        interpolate_velocity(grid, pos);
+                    const auto velocity = interpolate_velocity(grid, pos);
 
-                    const Eigen::Vector3f prev_pos = pos - dt * velocity;
+                    const auto prev_pos = pos - dt * velocity;
 
                     // clamp to the physical domain
-                    const Eigen::Vector3f clamped =
-                        prev_pos.cwiseMax(gcfg.min_corner())
-                            .cwiseMin(gcfg.max_corner());
+                    const auto clamped = prev_pos.cwiseMax(gcfg.min_corner())
+                                             .cwiseMin(gcfg.max_corner());
 
                     // convert physical coordinates to cell coordinates
-                    const Eigen::Vector3f grid_pos =
-                        (clamped - origin).cwiseQuotient(h);
+                    const auto grid_pos = (clamped - origin).cwiseQuotient(h);
 
                     const float advected =
                         interpolate_field(field, extents, offset, grid_pos);
 
-                    advect_velocity_buffer[buffer_offset + idx] =
-                        advected + dt * gravity[component];
+                    buffer[idx] =
+                        advected + dt * gravity[std::to_underlying(axis)];
                 }
             }
         }
@@ -82,12 +79,23 @@ void Solver::advect_velocity(Config cfg) {
     const Eigen::Vector3f offset_v{-0.5f, -1.0f, -0.5f};
     const Eigen::Vector3f offset_w{-0.5f, -0.5f, -1.0f};
 
-    advect_component(grid.u, gcfg.extents_u(), offset_u, 0, 0);
-    advect_component(grid.v, gcfg.extents_v(), offset_v, nu, 1);
-    advect_component(grid.w, gcfg.extents_w(), offset_w, nu + nv, 2);
+    // clang-format off
+    const auto idx_u = [&](auto&&... is) { return gcfg.u(is...); };
+    const auto idx_v = [&](auto&&... is) { return gcfg.v(is...); };
+    const auto idx_w = [&](auto&&... is) { return gcfg.w(is...); };
+    // clang-format on
+
+    // advect everything
+    // this is very slow
+    advect_component(grid.u, gcfg.extents_u(), offset_u, buff_mat_u1, idx_u,
+                     Axis::X);
+    advect_component(grid.v, gcfg.extents_v(), offset_v, buff_mat_v1, idx_v,
+                     Axis::Y);
+    advect_component(grid.w, gcfg.extents_w(), offset_w, buff_mat_w1, idx_w,
+                     Axis::Z);
 
     // update the grid
-    grid.u = advect_velocity_buffer.segment(0, nu);
-    grid.v = advect_velocity_buffer.segment(nu, nv);
-    grid.w = advect_velocity_buffer.segment(nu + nv, nw);
+    grid.u = buff_mat_u1;
+    grid.v = buff_mat_v1;
+    grid.w = buff_mat_w1;
 }
