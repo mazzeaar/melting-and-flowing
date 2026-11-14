@@ -1,3 +1,5 @@
+#include <chrono>
+
 #include "../solver.hpp"
 #include "core/log.hpp"
 
@@ -18,6 +20,8 @@ void Solver::prepare(Solver::Config cfg) {
         buff_mat_u1.resize(nu);
         buff_mat_v1.resize(nv);
         buff_mat_w1.resize(nw);
+        buff_mat_cell1.resize(n);
+        buff_mat_cell2.resize(n);
 
         buff_mat_u2.resize(nu);
         buff_mat_v2.resize(nv);
@@ -27,14 +31,10 @@ void Solver::prepare(Solver::Config cfg) {
         trip_u.resize(nu);
         trip_v.resize(nu);
         trip_w.resize(nu);
+        trip_cell.resize(n);
 
         // cell state buffer
-        buff_mat_cell.resize(n);
-    }
-
-    {  // velocity buffer
-        // has size: size(U) + size(V) + size(W)
-        advect_velocity_buffer.resize(nu + nv + nw);
+        buff_mat_cell_state.resize(n);
     }
 
     {  // each staggered component has its own number of unknowns
@@ -53,12 +53,6 @@ void Solver::prepare(Solver::Config cfg) {
     }
 
     {  // temperature advection buffer
-        advect_temperature_buffer.resize(n);
-
-        // Temperature diffusion buffers
-        temperature_rhs.resize(n);
-        temperature_T2.resize(n);
-
         temperature_triplets.reserve(7 * n);
         temperature_A.resize(n, n);
     }
@@ -81,6 +75,7 @@ auto cfl_dt(const Grid& grid, float cfl) -> float {
 // one full timestep
 // solves for du/dt
 void Solver::step(Solver::Config cfg) {
+    auto begin = std::chrono::high_resolution_clock::now();
     const auto cfl = cfg.settings.cfl;
     const auto target_dt = cfg.settings.dt;
 
@@ -123,6 +118,11 @@ void Solver::step(Solver::Config cfg) {
         remaining -= dt;
         ++substeps;
     }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    stats.step_duration.record(
+        std::chrono::duration_cast<Duration>(end - begin));
+    stats.cfl_substeps.record(substeps);
 }
 
 void Solver::single_step(Solver::Config cfg) {

@@ -16,8 +16,6 @@ void Solver::advect_velocity(Config cfg) {
     const auto nv = gcfg.size_v();
     const auto nw = gcfg.size_w();
 
-    assert(advect_velocity_buffer.size() == nu + nv + nw);
-
     const auto dt = cfg.settings.dt;
     const auto h = gcfg.cell_size();
     const auto origin = gcfg.min_corner();
@@ -59,8 +57,9 @@ void Solver::advect_velocity(Config cfg) {
                     const auto prev_pos = pos - dt * velocity;
 
                     // clamp to the physical domain
-                    const auto clamped = prev_pos.cwiseMax(gcfg.min_corner())
-                                             .cwiseMin(gcfg.max_corner());
+                    const Eigen::Vector3f clamped =
+                        prev_pos.cwiseMax(gcfg.min_corner())
+                            .cwiseMin(gcfg.max_corner());
 
                     // convert physical coordinates to cell coordinates
                     const auto grid_pos = (clamped - origin).cwiseQuotient(h);

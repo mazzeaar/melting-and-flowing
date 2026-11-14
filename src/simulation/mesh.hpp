@@ -38,7 +38,7 @@ struct Mesh {
     }
 
     void fit_to_box(const Eigen::Vector3f& box_min,
-                    const Eigen::Vector3f& box_max, float padding = 0.1) {
+                    const Eigen::Vector3f& box_max, float padding = 0.4) {
         if (vertices.rows() == 0) {
             throw core::Error("Cannot rescale an empty mesh");
         }

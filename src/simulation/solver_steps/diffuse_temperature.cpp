@@ -25,7 +25,7 @@ void Solver::diffuse_temperature(Config cfg) {
     const float_t ay = dt * thermal_diffusivity / (h.y() * h.y());
     const float_t az = dt * thermal_diffusivity / (h.z() * h.z());
 
-    temperature_rhs = grid.t;
+    auto& rhs = grid.t;
     temperature_triplets.clear();
 
     for (int k = 0; k < nz; ++k) {
@@ -81,11 +81,10 @@ void Solver::diffuse_temperature(Config cfg) {
         throw std::runtime_error("Temperature diffusion setup failed.");
     }
 
-    temperature_T2 = temperature_solver.solve(temperature_rhs);
-
+    buff_mat_cell1 = temperature_solver.solve(rhs);
     if (temperature_solver.info() != Eigen::Success) {
         throw std::runtime_error("Temperature diffusion failed.");
     }
 
-    grid.t = temperature_T2;
+    grid.t.swap(buff_mat_cell1);
 }

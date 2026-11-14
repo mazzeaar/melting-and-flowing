@@ -30,8 +30,9 @@ struct Solver {
             T latest() const { return history.back(); }
         };
 
-        Statistic<Duration> duration;
+        Statistic<Duration> step_duration;
         Statistic<std::size_t> iterations;
+        Statistic<std::size_t> cfl_substeps;
     };
 
     using float_type = float;
@@ -43,12 +44,11 @@ struct Solver {
 
     Eigen::VectorXf buff_mat_u1, buff_mat_v1, buff_mat_w1;
     Eigen::VectorXf buff_mat_u2, buff_mat_v2, buff_mat_w2;
-    Eigen::VectorXi buff_mat_cell;
+    Eigen::VectorXf buff_mat_cell1, buff_mat_cell2;
+    Eigen::VectorXi buff_mat_cell_state;
 
     std::vector<Eigen::Triplet<float_type>> trip_u, trip_v, trip_w;
-
-    Eigen::VectorXf advect_velocity_buffer;
-    Eigen::VectorXf advect_temperature_buffer;
+    std::vector<Eigen::Triplet<float_type>> trip_cell;
 
     // Viscous diffusion buffers
     // Eigen::VectorXf viscosity_rhs_u, viscosity_rhs_v, viscosity_rhs_w;
@@ -60,8 +60,6 @@ struct Solver {
         viscosity_solver_u, viscosity_solver_v, viscosity_solver_w;
 
     Eigen::SparseMatrix<float_type> temperature_A;
-    Eigen::VectorXf temperature_rhs;
-    Eigen::VectorXf temperature_T2;
 
     std::vector<Eigen::Triplet<float_type>> temperature_triplets;
 

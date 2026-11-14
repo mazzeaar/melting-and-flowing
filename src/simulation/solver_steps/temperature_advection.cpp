@@ -14,7 +14,7 @@ void Solver::advect_temperature(Solver::Config cfg) {
     const auto dt = cfg.settings.dt;
     const auto origin = gc.min_corner();
 
-    assert(advect_temperature_buffer.size() == gc.size());
+    assert(buff_cell.size() == gc.size());
 
     for (int i = 0; i < ex.x(); ++i) {
         for (int j = 0; j < ex.y(); ++j) {
@@ -23,7 +23,7 @@ void Solver::advect_temperature(Solver::Config cfg) {
 
                 if (grid.cell_state[idx] != CellState::FULL &&
                     grid.cell_state[idx] != CellState::SURFACE) {
-                    advect_temperature_buffer[idx] = temp[idx];
+                    buff_mat_cell1[idx] = temp[idx];
                     continue;
                 }
 
@@ -48,11 +48,11 @@ void Solver::advect_temperature(Solver::Config cfg) {
                 const Eigen::Vector3f grid_pos =
                     (clamped - origin).cwiseQuotient(h);
 
-                advect_temperature_buffer[idx] = interpolate_field(
+                buff_mat_cell1[idx] = interpolate_field(
                     temp, ex, Eigen::Vector3f::Constant(0.5f), grid_pos);
             }
         }
     }
 
-    temp = advect_temperature_buffer;
+    temp = buff_mat_cell1;
 }

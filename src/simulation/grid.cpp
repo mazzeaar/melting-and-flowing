@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <array>
 #include <queue>
-#include <ranges>
 #include <utility>
 
 #include "core/exception.hpp"
