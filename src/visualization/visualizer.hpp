@@ -34,6 +34,7 @@ struct Visualizer {
     void save_mesh();
     void update_particles();
     void update_grid(bool rebuild = false);
+    void update_mesh();
 };
 
 }  // namespace visualization
