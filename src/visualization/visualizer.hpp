@@ -24,6 +24,9 @@ struct Visualizer {
     bool running_ = false;
     int steps_per_frame_ = 1;
 
+    int resolution_upfactor = 2;
+    float radius_factor = 1.5f;
+
     void init();
     void update();
     void reset();
@@ -34,6 +37,7 @@ struct Visualizer {
     void save_mesh();
     void update_particles();
     void update_grid(bool rebuild = false);
+    void update_mesh();
 };
 
 }  // namespace visualization
