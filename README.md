@@ -19,6 +19,20 @@ cmake --preset release # or debug
 ninja -C release && ./build/release/sim
 '''
 
+## Benchmark
+Compile and run can be done with:
+```bash
+cmake --build --preset release --target fluid_benchmark
+./build/release/benchmark/fluid_benchmark benchmark/configs/{BENCH_TYPE}.toml
+```
+
+Plots can be generated like:
+```bash
+python benchmark/plot.py {BENCH_TYPE}
+```
+
+Currently there is only one benchmark: 'basic'
+
 ## Integrate with your tools
 
 ## Collaborate with your team
