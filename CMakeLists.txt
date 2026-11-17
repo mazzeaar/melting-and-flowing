@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Dependencies
+find_package(OpenMP REQUIRED)
 add_subdirectory(external/eigen EXCLUDE_FROM_ALL)
 add_subdirectory(external/polyscope)
 
@@ -57,7 +58,10 @@ add_library(fluid_core STATIC ${SOURCES})
 
 target_include_directories(fluid_core PUBLIC "${PROJECT_SOURCE_DIR}/src")
 
-target_link_libraries(fluid_core PUBLIC Eigen3::Eigen polyscope igl::core)
+target_link_libraries(
+  fluid_core
+  PUBLIC Eigen3::Eigen polyscope igl::core
+  PRIVATE OpenMP::OpenMP_CXX)
 
 # Suppress warnings originating from libigl
 target_compile_options(
