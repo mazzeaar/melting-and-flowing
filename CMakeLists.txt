@@ -81,3 +81,6 @@ add_executable(test_pressure tests/test_pressure.cpp)
 target_link_libraries(test_pressure PRIVATE fluid_core)
 
 add_test(NAME pressure COMMAND test_pressure)
+
+# add benchmarks
+add_subdirectory(benchmark)

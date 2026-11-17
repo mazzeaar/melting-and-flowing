@@ -1,6 +1,6 @@
-#include <chrono>
-
 #include "../solver.hpp"
+#include "core/benchmark.hpp"
+#include "core/exception.hpp"
 #include "core/log.hpp"
 
 void Solver::prepare(Solver::Config cfg) {
@@ -74,8 +74,10 @@ auto cfl_dt(const Grid& grid, float cfl) -> float {
 
 // one full timestep
 // solves for du/dt
+
 void Solver::step(Solver::Config cfg) {
-    auto begin = std::chrono::high_resolution_clock::now();
+    benchmark.tick("total");
+
     const auto cfl = cfg.settings.cfl;
     const auto target_dt = cfg.settings.dt;
 
@@ -87,7 +89,9 @@ void Solver::step(Solver::Config cfg) {
     std::size_t substeps = 0;
 
     // apply material slider changes before the first viscous solve
+    benchmark.tick("initial_viscosity");
     update_viscosity(cfg);
+    benchmark.tock("initial_viscosity");
 
     while (remaining > 0.0) {
         if (substeps >= cfg.settings.max_substeps) {
@@ -96,7 +100,10 @@ void Solver::step(Solver::Config cfg) {
                 "dt");
         }
 
+        benchmark.tick_cfl("cfl_dt");
         const auto dt = std::min(remaining, cfl_dt(cfg.grid, cfl));
+        benchmark.tock_cfl("cfl_dt");
+
         if (!std::isfinite(dt) &&
             dt != std::numeric_limits<double>::infinity()) {
             throw core::Error("Invalid CFL timestep");
@@ -119,38 +126,54 @@ void Solver::step(Solver::Config cfg) {
         ++substeps;
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
-    stats.step_duration.record(
-        std::chrono::duration_cast<Duration>(end - begin));
-    stats.cfl_substeps.record(substeps);
+    benchmark.end_step(substeps);
+    benchmark.tock("total");
 }
 
 void Solver::single_step(Solver::Config cfg) {
+    // Step 1: Advection and external forces
+    benchmark.tick_cfl("advect_velocity");
     advect_velocity(cfg);
+    benchmark.tock_cfl("advect_velocity");
 
     // Step 2: Viscous diffusion
     // u2 - dt * nu * ∇²u2 = u1
+    benchmark.tick_cfl("diffuse_velocity");
     diffuse_velocity(cfg);
+    benchmark.tock_cfl("diffuse_velocity");
 
     // Step 3: Pressure Poisson equation
     // ∇²p = (rho / dt) * ∇·u2
+    benchmark.tick_cfl("solve_pressure");
     solve_pressure(cfg);
+    benchmark.tock_cfl("solve_pressure");
 
     // Step 4: Pressure projection
     // u_new = u2 - (dt / rho) * ∇p
+    benchmark.tick_cfl("project_velocity");
     project_velocity(cfg);
+    benchmark.tock_cfl("project_velocity");
 
     // Step 5: Temperature advection
     // T1 = T_old - dt * (u_new · ∇)T_old
+    benchmark.tick_cfl("advect_temperature");
     advect_temperature(cfg);
+    benchmark.tock_cfl("advect_temperature");
 
     // Step 6: Temperature diffusion
     // T_new - dt * kappa * ∇²T_new = T1
+    benchmark.tick_cfl("diffuse_temperature");
     diffuse_temperature(cfg);
+    benchmark.tock_cfl("diffuse_temperature");
 
     // Step 7: Update viscosity from temperature
     // eta_new = eta(T_new)
+    benchmark.tick_cfl("update_viscosity");
     update_viscosity(cfg);
+    benchmark.tock_cfl("update_viscosity");
 
+    // Step 8: Update particle positions
+    benchmark.tick_cfl("advect_particles");
     advect_particles(cfg);
+    benchmark.tock_cfl("advect_particles");
 }

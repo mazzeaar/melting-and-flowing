@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <vector>
 
+#include "core/benchmark.hpp"
 #include "grid.hpp"
 #include "settings.hpp"
 
@@ -40,6 +41,7 @@ struct Solver {
    private:
     friend struct PressureTest;
 
+    benchmark::SolverBenchmark benchmark;
     Statistics stats;
 
     Eigen::VectorXf buff_mat_u1, buff_mat_v1, buff_mat_w1;
@@ -69,6 +71,8 @@ struct Solver {
 
    public:
     Solver() = default;
+
+    auto get_benchmark() const -> const auto& { return benchmark; }
 
     // precomputations/conditioning/allocations go here
     // should only be called on resizing and first call?

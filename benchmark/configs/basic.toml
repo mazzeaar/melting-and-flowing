@@ -1,0 +1,18 @@
+mesh_file = "../../assets/meshes/bunny.obj"
+num_steps = 100
+warmup_runs = 5
+runs = 5
+
+[grid]
+cell_counts = [20, 20, 20]
+cell_size = 0.015625
+
+[solver]
+dt = 0.016666667
+cfl = 0.5
+
+[physics]
+reference_viscosity = 1e-6
+
+[initialization]
+particle_count = 20000
