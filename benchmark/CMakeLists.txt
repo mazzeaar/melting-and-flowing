@@ -7,7 +7,7 @@ target_include_directories(fluid_core_benchmark
                            PUBLIC "${PROJECT_SOURCE_DIR}/src")
 
 target_link_libraries(fluid_core_benchmark PUBLIC Eigen3::Eigen polyscope
-                                                  igl::core)
+                                                  igl::core OpenMP::OpenMP_CXX)
 
 target_compile_definitions(
   fluid_core_benchmark PUBLIC ENABLE_BENCHMARKS

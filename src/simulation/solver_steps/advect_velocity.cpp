@@ -30,9 +30,11 @@ void Solver::advect_velocity(Config cfg) {
                                 Eigen::Vector3i extents, Eigen::Vector3f offset,
                                 Eigen::VectorXf& buffer, auto&& index_func,
                                 Axis axis) {
-        for (int i = 0; i < extents.x(); ++i) {
+
+#pragma omp parallel for collapse(2) schedule(static)
+        for (int k = 0; k < extents.z(); ++k) {
             for (int j = 0; j < extents.y(); ++j) {
-                for (int k = 0; k < extents.z(); ++k) {
+                for (int i = 0; i < extents.x(); ++i) {
                     const auto idx = index_func(i, j, k);
 
                     const Eigen::Vector3f cell{
