@@ -191,6 +191,13 @@ void Visualizer::draw_controls() {
                           "%.3e");
     }
 
+    // Mesh reconstruction
+    if (ImGui::CollapsingHeader("Mesh reconstructure")) {
+        ImGui::InputInt("Cell counts", &resolution_upfactor);
+
+        ImGui::InputFloat("Particle radius factor", &radius_factor);
+    }
+
     // Physics
     if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::InputFloat("Gravity (m/s^2)", &physics.gravity, 0.1f, 1.0f);
@@ -331,8 +338,6 @@ void Visualizer::update_mesh() {
     // - Skip cells where cellstate = FULL
 
     // Config values (move to settings later)
-    const int resolution_upfactor = 2;
-    const float radius_factor = 1.5f;
 
     const auto& points = sim_.particles.positions;
     const auto& config = sim_.grid.config();

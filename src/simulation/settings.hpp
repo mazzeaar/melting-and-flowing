@@ -20,6 +20,11 @@ struct SimulationSettings {
         float solver_tolerance = 1e-6f;
     } solver;
 
+    struct VisualizerSettings {
+        float resolution_upfactor = 2.f;
+        float radius_factor = 1.5f;
+    } visualizer;
+
     struct PhysicsSettings {
         float gravity = -9.81f;
         float density = 1000.0f;
