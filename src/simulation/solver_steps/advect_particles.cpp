@@ -15,6 +15,7 @@ void Solver::advect_particles(Config cfg) {
 
     const auto n = particles.rows();
 
+#pragma omp parallel for schedule(static)
     for (Eigen::Index row = 0; row < n; ++row) {
         auto point = Eigen::Vector3f{
             particles(row, 0),
