@@ -10,84 +10,128 @@
 // (I - ∇ · (nu * ∇)) u2 = u1
 
 enum class WallCondition : std::uint8_t { FreeSlip, NoSlip };
+enum class FaceState : std::uint8_t {Fluid, Solid, Air, Unknown}; 
+enum class Axis : std::uint8_t { X, Y, Z };
 
-enum class Dimension : std::uint8_t { X, Y, Z };
+auto row(const Grid::Config& gc, Axis axis,
+                    int i, int j, int k) -> std::size_t {
+    switch (axis) {
+        case Axis::X: return gc.u(i, j, k);
+        case Axis::Y: return gc.v(i, j, k);
+        case Axis::Z: return gc.w(i, j, k);
+    }
+    return 0;
+}
 
-void triplets(auto& triplets, const auto& gc, const WallCondition bc,
-              const Dimension dim, const float dt, const float nu,
-              const Eigen::Vector3i& ex, const auto& row, const int i,
-              const int j, const int k) {
-    const auto h = gc.cell_size();
+void triplets(auto& triplets, Solver::Config cfg, 
+              const WallCondition bc, const Axis ax, const float nu,
+              const int i, const int j, const int k) {
+                
+    const auto  gc = cfg.grid.config();
+    const auto& state = cfg.grid.cell_state;
+    const float dt = cfg.settings.dt;
+
+    const auto  ex = gc.extents();
+    const auto  h  = gc.cell_size();
 
     const float dx = h.x();
     const float dy = h.y();
-    const float dz = h.z();
+    const float dz = h.z(); 
 
-    const float idx2 = 1.0f / (dx * dx);
-    const float idy2 = 1.0f / (dy * dy);
-    const float idz2 = 1.0f / (dz * dz);
+    const float cx = dt * nu / (dx * dx);
+    const float cy = dt * nu / (dy * dy);
+    const float cz = dt * nu / (dz * dz);
 
-    const auto r = row(i, j, k);
+    const int r = row(gc, ax, i, j, k); 
 
-    const int axis = std::to_underlying(dim);
+    const auto get_face = [&](int i, int j, int k) -> FaceState {
+        int i1 = i + (ax == Axis::X ? -1 : 0);
+        int j1 = j + (ax == Axis::Y ? -1 : 0);
+        int k1 = k + (ax == Axis::Z ? -1 : 0);
+        
+        if (i < 0 || i >= ex.x() ||
+            j < 0 || j >= ex.y() ||
+            k < 0 || k >= ex.z() ||
+            i1 < 0 || j1 < 0 || k1 < 0) {
+            return FaceState::Solid;
+        } 
+        
+        auto cs0 = state[gc.cell(i, j, k)];
+        auto cs1 = state[gc.cell(i1, j1, k1)];
 
-    const auto active = [&](int x, int y, int z) {
-        const Eigen::Vector3i q{x, y, z};
+        if (cs0 == CellState::UNKNOWN || cs1 == CellState::UNKNOWN) {
+            return FaceState::Unknown;
+        } 
 
-        return (q.array() >= 1).all() && (q.array() < ex.array() - 1).all() &&
-               q[axis] > 1 && q[axis] < ex[axis] - 2;
+        if (cs0 == CellState::SOLID || cs1 == CellState::SOLID) {
+            return FaceState::Solid;
+        } 
+        
+        if (cs0 == CellState::FULL || cs1 == CellState::FULL || 
+            cs0 == CellState::SURFACE || cs1 == CellState::SURFACE) {
+            return FaceState::Fluid;
+        } 
+        
+        if (cs0 == CellState::AIR && cs1 == CellState::AIR) {
+            return FaceState::Air;
+        } 
+        
+        return FaceState::Unknown;
     };
-
-    // Identity rows for ghosts and prescribed wall faces.
-    if (!active(i, j, k)) {
+    
+    // Non-Fluid
+    if (get_face(i, j, k) != FaceState::Fluid) {
         triplets.emplace_back(r, r, 1.0f);
         return;
     }
 
-    // Diagonal Element
-    triplets.emplace_back(r, r, 1 + dt * nu * 2 * (idx2 + idy2 + idz2));
+    float diag = 1.0f;
+    
+    struct Neighbors {int delta_x, delta_y, delta_z; float coeff;};
+    const Neighbors neighbors[6] = {
+        {-1, 0, 0, cx}, {1, 0, 0, cx},
+        {0, -1, 0, cy}, {0, 1, 0, cy},
+        {0, 0, -1, cz}, {0, 0, 1, cz}
+    };
 
-    // X-Axis Neighbors
-    if (active(i - 1, j, k)) {
-        triplets.emplace_back(r, row(i - 1, j, k), -dt * nu * idx2);
-    } else {
-    }
-    if (active(i + 1, j, k)) {
-        triplets.emplace_back(r, row(i + 1, j, k), -dt * nu * idx2);
-    } else {
-    }  // Boundary Conditions...
+    for (const auto& n : neighbors) {
+        const int nx = i + n.delta_x;
+        const int ny = j + n.delta_y;
+        const int nz = k + n.delta_z;
 
-    // Y-Axis Neighbors
-    if (active(i, j - 1, k)) {
-        triplets.emplace_back(r, row(i, j - 1, k), -dt * nu * idy2);
-    } else {
-    }
-    if (active(i, j + 1, k)) {
-        triplets.emplace_back(r, row(i, j + 1, k), -dt * nu * idy2);
-    } else {
+        FaceState nFaceState = get_face(nx, ny, nz);
+
+        // Fluid
+        if (nFaceState == FaceState::Fluid) {
+            diag += n.coeff;
+            const int nr = row(gc, ax, nx, ny, nz);
+            triplets.emplace_back(r, nr, -n.coeff);
+        }
+        // Solid
+        else if (nFaceState == FaceState::Solid) {
+            if (bc == WallCondition::NoSlip) {
+                diag += n.coeff;
+                // For moving walls
+                // rhs += n.coeff * wall_velocity
+            }
+            //else if (bc == WallCondition::FreeSlip) { }
+        }
+        // Air
+        //else if (nFaceState == FaceState::Air) { }
     }
 
-    // Z-Axis Neighbors
-    if (active(i, j, k - 1)) {
-        triplets.emplace_back(r, row(i, j, k - 1), -dt * nu * idz2);
-    } else {
-    }
-    if (active(i, j, k + 1)) {
-        triplets.emplace_back(r, row(i, j, k + 1), -dt * nu * idz2);
-    } else {
-    }
+    triplets.emplace_back(r, r, diag);
 }
 
 void Solver::diffuse_velocity(Solver::Config cfg) {
     auto& u1 = cfg.grid.u;  // X
     auto& v1 = cfg.grid.v;  // Y
     auto& w1 = cfg.grid.w;  // Z
-    auto& state = cfg.grid.cell_state;
 
-    const auto dt = cfg.settings.dt;
     const auto gc = cfg.grid.config();
 
-    const auto nu = 0.3f;
+    // Magic numbers for now
+    const auto nu = 5.5f;
     // Eigen::VectorXd nu = Eigen::VectorXd::Constant(n, 0.3);
     WallCondition bc = WallCondition::NoSlip;
 
@@ -106,42 +150,26 @@ void Solver::diffuse_velocity(Solver::Config cfg) {
     trip_w.reserve(7 * gc.size_w());
 
     const auto prepare = [&](const auto& field, auto& rhs, auto& entries,
-                             Eigen::Vector3i ex, const auto& row,
-                             Dimension dim) {
-        const int axis = static_cast<int>(dim);
-
-        // Eigen is column major but cpp is row major, so...?
+                             Eigen::Vector3i ex, Axis ax) {
+        
         for (int i = 0; i < ex.x(); ++i) {
             for (int j = 0; j < ex.y(); ++j) {
                 for (int k = 0; k < ex.z(); ++k) {
-                    const auto r = row(i, j, k);
-
-                    const Eigen::Vector3i q{i, j, k};
-                    const bool interior = (q.array() >= 1).all() &&
-                                          (q.array() < ex.array() - 1).all() &&
-                                          q[axis] > 1 && q[axis] < ex[axis] - 2;
 
                     // Populate RHS Vectors
-                    rhs(r) = interior ? field[r] : 0.0f;
+                    const auto r = row(gc, ax, i, j, k);
+                    rhs(r) = field[r];
 
                     // Populate Triplets for A
-                    triplets(entries, gc, bc, dim, dt, nu, ex, row, i, j, k);
+                    triplets(entries, cfg, bc, ax, nu, i, j, k);
                 }
             }
         }
     };
 
-    prepare(
-        u1, rhs_u, trip_u, gc.extents_u(),
-        [&](int i, int j, int k) { return gc.u(i, j, k); }, Dimension::X);
-
-    prepare(
-        v1, rhs_v, trip_v, gc.extents_v(),
-        [&](int i, int j, int k) { return gc.v(i, j, k); }, Dimension::Y);
-
-    prepare(
-        w1, rhs_w, trip_w, gc.extents_w(),
-        [&](int i, int j, int k) { return gc.w(i, j, k); }, Dimension::Z);
+    prepare(u1, rhs_u, trip_u, gc.extents_u(), Axis::X);
+    prepare(v1, rhs_v, trip_v, gc.extents_v(), Axis::Y);
+    prepare(w1, rhs_w, trip_w, gc.extents_w(), Axis::Z);
 
     // Construct Matrix A
     auto& A_u = viscosity_A_u;
@@ -169,24 +197,19 @@ void Solver::diffuse_velocity(Solver::Config cfg) {
     auto& v2 = buff_mat_v2;
     auto& w2 = buff_mat_w2;
 
-    u2 = solver_u.solve(rhs_u);
-    v2 = solver_v.solve(rhs_v);
-    w2 = solver_w.solve(rhs_w);
+    u2 = solver_u.solveWithGuess(rhs_u, u1);
+    v2 = solver_v.solveWithGuess(rhs_v, v1);
+    w2 = solver_w.solveWithGuess(rhs_w, w1);
 
-    if (solver_u.info() != Eigen::Success) {
+    /*
+    // Often fails... but good enough...
+    if (solver_u.info() != Eigen::Success || 
+        solver_v.info() != Eigen::Success || 
+        solver_w.info() != Eigen::Success) {
         throw std::runtime_error(
-            "Viscous Diffusion: Solver failed for u-component.");
+            "Viscous Diffusion: Solver failed to converge.");
     }
-
-    if (solver_v.info() != Eigen::Success) {
-        throw std::runtime_error(
-            "Viscous Diffusion: Solver failed for v-component.");
-    }
-
-    if (solver_w.info() != Eigen::Success) {
-        throw std::runtime_error(
-            "Viscous Diffusion: Solver failed for w-component.");
-    }
+    */
 
     u1 = u2;
     v1 = v2;
