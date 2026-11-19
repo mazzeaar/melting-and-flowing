@@ -1,5 +1,3 @@
-#include <utility>
-
 #include "../solver.hpp"
 
 // Step 2: Viscous Diffusion
@@ -9,21 +7,13 @@
 // u2 - ∇ · (nu * ∇u2)   = u1 (vector nu)
 // (I - ∇ · (nu * ∇)) u2 = u1
 
+namespace {
+
 enum class WallCondition : std::uint8_t { FreeSlip, NoSlip };
-enum class FaceState : std::uint8_t {Fluid, Solid, Air, Unknown}; 
+enum class FaceState : std::uint8_t { Fluid, Solid, Air, Unknown }; 
 enum class Axis : std::uint8_t { X, Y, Z };
 
-auto row(const Grid::Config& gc, Axis axis,
-                    int i, int j, int k) -> std::size_t {
-    switch (axis) {
-        case Axis::X: return gc.u(i, j, k);
-        case Axis::Y: return gc.v(i, j, k);
-        case Axis::Z: return gc.w(i, j, k);
-    }
-    return 0;
-}
-
-void triplets(auto& triplets, Solver::Config cfg, 
+void triplets(auto& entries, const Solver::Config& cfg, 
               const WallCondition bc, const Axis ax, const float nu,
               const int i, const int j, const int k) {
                 
@@ -42,21 +32,19 @@ void triplets(auto& triplets, Solver::Config cfg,
     const float cy = dt * nu / (dy * dy);
     const float cz = dt * nu / (dz * dz);
 
-    const int r = row(gc, ax, i, j, k); 
-
-    const auto get_face = [&](int i, int j, int k) -> FaceState {
-        int i1 = i + (ax == Axis::X ? -1 : 0);
-        int j1 = j + (ax == Axis::Y ? -1 : 0);
-        int k1 = k + (ax == Axis::Z ? -1 : 0);
+    const auto get_face = [&](int i0, int j0, int k0) -> FaceState {
+        int i1 = i0 + (ax == Axis::X ? -1 : 0);
+        int j1 = j0 + (ax == Axis::Y ? -1 : 0);
+        int k1 = k0 + (ax == Axis::Z ? -1 : 0);
         
-        if (i < 0 || i >= ex.x() ||
-            j < 0 || j >= ex.y() ||
-            k < 0 || k >= ex.z() ||
+        if (i0 < 0 || i0 >= ex.x() ||
+            j0 < 0 || j0 >= ex.y() ||
+            k0 < 0 || k0 >= ex.z() ||
             i1 < 0 || j1 < 0 || k1 < 0) {
             return FaceState::Solid;
         } 
         
-        auto cs0 = state[gc.cell(i, j, k)];
+        auto cs0 = state[gc.cell(i0, j0, k0)];
         auto cs1 = state[gc.cell(i1, j1, k1)];
 
         if (cs0 == CellState::UNKNOWN || cs1 == CellState::UNKNOWN) {
@@ -78,10 +66,21 @@ void triplets(auto& triplets, Solver::Config cfg,
         
         return FaceState::Unknown;
     };
+
+    const auto row = [&](int i0, int j0, int k0) -> std::size_t {
+        switch (ax) {
+            case Axis::X: return gc.u(i0, j0, k0);
+            case Axis::Y: return gc.v(i0, j0, k0);
+            case Axis::Z: return gc.w(i0, j0, k0);
+        }
+        return 0;
+    };
+
+    const int r = row(i, j, k); 
     
     // Non-Fluid
     if (get_face(i, j, k) != FaceState::Fluid) {
-        triplets.emplace_back(r, r, 1.0f);
+        entries.emplace_back(r, r, 1.0f);
         return;
     }
 
@@ -104,24 +103,33 @@ void triplets(auto& triplets, Solver::Config cfg,
         // Fluid
         if (nFaceState == FaceState::Fluid) {
             diag += n.coeff;
-            const int nr = row(gc, ax, nx, ny, nz);
-            triplets.emplace_back(r, nr, -n.coeff);
+            const int nr = row(nx, ny, nz);
+            entries.emplace_back(r, nr, -n.coeff);
         }
         // Solid
         else if (nFaceState == FaceState::Solid) {
+            const bool is_normal = (ax == Axis::X && n.delta_x != 0) ||
+                                   (ax == Axis::Y && n.delta_y != 0) ||
+                                   (ax == Axis::Z && n.delta_z != 0);
             if (bc == WallCondition::NoSlip) {
-                diag += n.coeff;
+                diag += (is_normal ? 1.0f : 2.0f) * n.coeff;
                 // For moving walls
-                // rhs += n.coeff * wall_velocity
+                // rhs += (is_normal ? 1.0f : 2.0f) * n.coeff * wall_velocity
             }
-            //else if (bc == WallCondition::FreeSlip) { }
+            else if (bc == WallCondition::FreeSlip) {
+                diag += is_normal ? n.coeff : 0.0f;
+                // For moving walls
+                // rhs += (is_normal ? n.coeff : 0.0f) * wall_velocity
+            }
         }
         // Air
-        //else if (nFaceState == FaceState::Air) { }
+        // else if (nFaceState == FaceState::Air) { }
     }
 
-    triplets.emplace_back(r, r, diag);
+    entries.emplace_back(r, r, diag);
 }
+
+}  // namespace
 
 void Solver::diffuse_velocity(Solver::Config cfg) {
     auto& u1 = cfg.grid.u;  // X
@@ -133,12 +141,13 @@ void Solver::diffuse_velocity(Solver::Config cfg) {
     // Magic numbers for now
     const auto nu = 5.5f;
     // Eigen::VectorXd nu = Eigen::VectorXd::Constant(n, 0.3);
-    WallCondition bc = WallCondition::NoSlip;
+    WallCondition bc = WallCondition::FreeSlip;
 
-    // Construct the RHS Vectors (just for the interior cells)
-    auto& rhs_u = buff_mat_u1;
-    auto& rhs_v = buff_mat_v1;
-    auto& rhs_w = buff_mat_w1;
+    // Construct the RHS Vectors 
+    // (not needed, but could be used for moving walls)
+    // auto& rhs_u = buff_mat_u1;
+    // auto& rhs_v = buff_mat_v1;
+    // auto& rhs_w = buff_mat_w1;
 
     // Prepare Triplets for Matrix A
     trip_u.clear();
@@ -149,16 +158,15 @@ void Solver::diffuse_velocity(Solver::Config cfg) {
     trip_v.reserve(7 * gc.size_v());
     trip_w.reserve(7 * gc.size_w());
 
-    const auto prepare = [&](const auto& field, auto& rhs, auto& entries,
-                             Eigen::Vector3i ex, Axis ax) {
+    const auto prepare = [&](auto& entries, Eigen::Vector3i ex, Axis ax) {
         
         for (int i = 0; i < ex.x(); ++i) {
             for (int j = 0; j < ex.y(); ++j) {
                 for (int k = 0; k < ex.z(); ++k) {
 
-                    // Populate RHS Vectors
-                    const auto r = row(gc, ax, i, j, k);
-                    rhs(r) = field[r];
+                    // Populate RHS Vectors 
+                    // const auto r = row(gc, ax, i, j, k);
+                    // rhs(r) = field[r];
 
                     // Populate Triplets for A
                     triplets(entries, cfg, bc, ax, nu, i, j, k);
@@ -167,9 +175,9 @@ void Solver::diffuse_velocity(Solver::Config cfg) {
         }
     };
 
-    prepare(u1, rhs_u, trip_u, gc.extents_u(), Axis::X);
-    prepare(v1, rhs_v, trip_v, gc.extents_v(), Axis::Y);
-    prepare(w1, rhs_w, trip_w, gc.extents_w(), Axis::Z);
+    prepare(trip_u, gc.extents_u(), Axis::X);
+    prepare(trip_v, gc.extents_v(), Axis::Y);
+    prepare(trip_w, gc.extents_w(), Axis::Z);
 
     // Construct Matrix A
     auto& A_u = viscosity_A_u;
@@ -180,9 +188,10 @@ void Solver::diffuse_velocity(Solver::Config cfg) {
     A_v.setFromTriplets(trip_v.begin(), trip_v.end());
     A_w.setFromTriplets(trip_w.begin(), trip_w.end());
 
-    A_u.makeCompressed();
-    A_v.makeCompressed();
-    A_w.makeCompressed();
+    // Already compressed by setFromTriplets
+    // A_u.makeCompressed();
+    // A_v.makeCompressed();
+    // A_w.makeCompressed();
 
     // Solve with Jacobi preconditioner (default)
     auto& solver_u = viscosity_solver_u;
@@ -197,9 +206,9 @@ void Solver::diffuse_velocity(Solver::Config cfg) {
     auto& v2 = buff_mat_v2;
     auto& w2 = buff_mat_w2;
 
-    u2 = solver_u.solveWithGuess(rhs_u, u1);
-    v2 = solver_v.solveWithGuess(rhs_v, v1);
-    w2 = solver_w.solveWithGuess(rhs_w, w1);
+    u2 = solver_u.solveWithGuess(u1, u1);
+    v2 = solver_v.solveWithGuess(v1, v1);
+    w2 = solver_w.solveWithGuess(w1, w1);
 
     /*
     // Often fails... but good enough...
