@@ -1,5 +1,6 @@
 #pragma once
 
+#include "grid_stats_panel.hpp"
 #include "simulation/mesh.hpp"
 #include "simulation/simulation.hpp"
 
@@ -23,6 +24,8 @@ struct Visualizer {
 
     bool running_ = false;
     int steps_per_frame_ = 1;
+
+    GridStatisticsPanel grid_stats_;
 
     int resolution_upfactor = 2;
     float radius_factor = 1.5f;

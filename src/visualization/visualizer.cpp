@@ -85,6 +85,7 @@ void Visualizer::load_mesh(std::filesystem::path file) {
 
     // Fit the mesh and initialise the sim using the current settings.
     sim_.load_mesh(mesh_ptr);
+    grid_stats_.reset(sim_);
 
     // temporary, delete this, later or add as explicit option?
     // just here to display something on the screen
@@ -100,6 +101,7 @@ void Visualizer::load_mesh(std::filesystem::path file) {
 
 void Visualizer::callback() {
     draw_controls();
+    grid_stats_.draw(sim_);
 
     if (!running_) {
         return;
@@ -285,10 +287,6 @@ void Visualizer::draw_controls() {
         .settings = settings.solver,
         .physics = settings.physics,
     });
-    ImGui::Text("T: %.3g .. %.3g K", sim_.grid.t.minCoeff(),
-                sim_.grid.t.maxCoeff());
-    ImGui::Text("eta: %.3g .. %.3g Pa s", sim_.grid.eta.minCoeff(),
-                sim_.grid.eta.maxCoeff());
 }
 
 void Visualizer::step() {
@@ -303,6 +301,7 @@ void Visualizer::step() {
 
     try {
         sim_.step(settings.dt);
+        grid_stats_.sample(sim_);
     } catch (...) {
         running_ = false;
         throw;
@@ -543,6 +542,7 @@ void Visualizer::reset() {
     }
 
     sim_.load_mesh(mesh_ptr);
+    grid_stats_.reset(sim_);
 
     auto* mesh = polyscope::registerSurfaceMesh("Mesh", mesh_ptr->vertices,
                                                 mesh_ptr->faces);
