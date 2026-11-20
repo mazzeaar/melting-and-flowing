@@ -5,20 +5,18 @@
 
 #include <algorithm>
 #include <array>
+#include <memory>
+#include <utility>
 #include <vector>
 
+#include "runners.hpp"
 #include "simulation/grid_stats.hpp"
-#include "simulation/simulation.hpp"
 
 namespace visualization {
 
-// UI-owned diagnostics: no solver hooks, timings, or per-substep reductions.
+// UI-owned history and plots; the worker publishes immutable statistics.
 class GridStatisticsPanel {
-    struct Sample {
-        double time;
-        std::size_t step;
-        GridStatistics stats;
-    };
+    using Sample = StatisticsSnapshot;
 
     struct Metric {
         const char* label;
@@ -89,7 +87,7 @@ class GridStatisticsPanel {
     static constexpr std::size_t capacity = 1024;
     std::vector<Sample> history_;
     std::size_t next_ = 0;
-    int steps_since_sample_ = 0;
+    std::shared_ptr<const StatisticsSnapshot> last_sample_;
     bool enabled_ = true;
     bool auto_fit_ = true;
     int sample_every_ = 5;
@@ -164,19 +162,11 @@ class GridStatisticsPanel {
    public:
     GridStatisticsPanel() { history_.reserve(capacity); }
 
-    void sample(const Simulation& sim, bool force = false) {
-        if (!enabled_) {
-            return;
-        }
-        if (!force && ++steps_since_sample_ < sample_every_) {
-            return;
-        }
-        steps_since_sample_ = 0;
-        const Sample value{
-            sim.time, sim.step_count,
-            GridStatistics::compute(
-                sim.grid, sim.settings.physics.density,
-                Eigen::Vector3f(0, sim.settings.physics.gravity, 0))};
+    void sample(std::shared_ptr<const StatisticsSnapshot> sample) {
+        if (!sample || sample == last_sample_) return;
+        last_sample_ = std::move(sample);
+        if (!enabled_) return;
+        const Sample& value = *last_sample_;
         if (history_.size() < capacity) {
             history_.push_back(value);
         } else {
@@ -185,42 +175,43 @@ class GridStatisticsPanel {
         next_ = (next_ + 1) % capacity;
     }
 
-    // Reset/load starts a new history; a paused grid is never polled every
-    // frame.
-    void reset(const Simulation& sim) {
+    // Retain last_sample_ so clearing history cannot re-add a stale result.
+    void reset(SimulationRunner& runner) {
         history_.clear();
         next_ = 0;
-        steps_since_sample_ = 0;
-        sample(sim, true);
+        runner.configure_statistics(enabled_, sample_every_, true);
     }
 
-    void draw(const Simulation& sim) {
+    void draw(SimulationRunner& runner) {
         ImGui::SetNextWindowSize(ImVec2(440, 700), ImGuiCond_FirstUseEver);
         if (ImGui::Begin("Grid statistics")) {
-            draw_contents(sim);
+            draw_contents(runner);
         }
         // End is required even when the window is collapsed.
         ImGui::End();
     }
 
    private:
-    void draw_contents(const Simulation& sim) {
-        if (ImGui::Checkbox("Record physical statistics", &enabled_) &&
-            enabled_) {
-            reset(sim);
+    void draw_contents(SimulationRunner& runner) {
+        if (ImGui::Checkbox("Record physical statistics", &enabled_)) {
+            if (enabled_) {
+                reset(runner);
+            } else {
+                runner.configure_statistics(false, sample_every_);
+            }
         }
         if (ImGui::InputInt("Sample every N full steps", &sample_every_)) {
             sample_every_ = std::max(sample_every_, 1);
-            steps_since_sample_ = 0;
+            runner.configure_statistics(enabled_, sample_every_);
         }
         ImGui::Checkbox("Auto-fit plots", &auto_fit_);
         if (ImGui::Button("Clear statistics")) {
-            reset(sim);
+            reset(runner);
         }
         if (enabled_) {
             ImGui::SameLine();
             if (ImGui::Button("Sample now")) {
-                sample(sim, true);
+                runner.configure_statistics(enabled_, sample_every_, true);
             }
         } else {
             ImGui::TextDisabled("Recording off; history frozen; no grid scan.");

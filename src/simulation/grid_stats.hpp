@@ -44,7 +44,8 @@ struct GridStatistics {
 
     // Read-only, allocation-free pass. Call AFTER a completed simulation step,
     // outside the solver/benchmarks, and only at the desired sampling cadence.
-    // Reductions exclude fluid cells with non-finite inputs; occupancy does not.
+    // Reductions exclude fluid cells with non-finite inputs; occupancy does
+    // not.
     static auto compute(const Grid& grid, float density,
                         const Eigen::Vector3f& gravity) -> GridStatistics {
         GridStatistics s;
@@ -79,7 +80,8 @@ struct GridStatistics {
                         continue;
 
                     ++s.fluid_cells;
-                    s.surface_cells += state == static_cast<int>(CellState::SURFACE);
+                    s.surface_cells +=
+                        state == static_cast<int>(CellState::SURFACE);
 
                     // Velocity arrays have a one-element ghost layer on ALL
                     // axes. Physical cell (i,j,k) lies between these faces.
@@ -116,15 +118,18 @@ struct GridStatistics {
                                               (v1 - v0) / dx.y() +
                                               (w1 - w0) / dx.z();
 
-                    s.max_divergence = std::max(s.max_divergence, std::abs(divergence));
+                    s.max_divergence =
+                        std::max(s.max_divergence, std::abs(divergence));
                     s.mean_divergence += divergence;
                     div_sq_sum += divergence * divergence;
 
                     const Eigen::Vector3d relative_position =
-                        Eigen::Vector3d(i + 0.5, j + 0.5, k + 0.5).cwiseProduct(h);
+                        Eigen::Vector3d(i + 0.5, j + 0.5, k + 0.5)
+                            .cwiseProduct(h);
 
                     s.kinetic_energy += 0.5 * mass * speed_sq;
-                    // Zero potential at the domain origin, using actual gravity.
+                    // Zero potential at the domain origin, using actual
+                    // gravity.
                     s.potential_energy -= mass * g.dot(relative_position);
                     s.momentum += mass * velocity;
                     s.center_of_mass += origin + relative_position;
