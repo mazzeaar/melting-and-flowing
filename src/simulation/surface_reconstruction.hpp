@@ -8,6 +8,7 @@
 struct SurfaceReconstructor {
     int resolution_upfactor = 2;
     float radius_factor = 1.5f;
+    int marker_stride = 1;
     benchmark::BenchmarkBase benchmark;
 
     void reconstruct(const Eigen::MatrixXf& points, const Grid::Config& config,

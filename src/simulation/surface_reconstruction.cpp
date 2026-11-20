@@ -48,7 +48,9 @@ void SurfaceReconstructor::reconstruct(const Eigen::MatrixXf& points,
     Eigen::VectorXf weight_sum = Eigen::VectorXf::Zero(n_nodes);
     Eigen::MatrixXf weighted_pos = Eigen::MatrixXf::Zero(n_nodes, 3);
 
-    for (Eigen::Index i = 0; i < points.rows(); ++i) {
+    const Eigen::Index stride = std::max(1, marker_stride);
+
+    for (Eigen::Index i = 0; i < points.rows(); i += stride) {
         const Eigen::Vector3f point = points.row(i).transpose();
 
         // Range of node indices within kernel_radius, clamped to the grid

@@ -20,3 +20,4 @@ particle_count = 20000
 [mesh]
 resolution_upfactor = 2
 radius_factor = 1.5
+marker_stride = 2

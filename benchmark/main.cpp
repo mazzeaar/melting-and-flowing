@@ -24,6 +24,7 @@ struct BenchConfig {
 
     int resolution_upfactor = SurfaceReconstructor{}.resolution_upfactor;
     float radius_factor = SurfaceReconstructor{}.radius_factor;
+    int marker_stride = SurfaceReconstructor{}.marker_stride;
 
     std::size_t num_steps = 0;
     std::size_t warmup_runs = 5;
@@ -117,9 +118,14 @@ auto load_config(const std::filesystem::path& path) -> BenchConfig {
     const auto mesh_section = toml["mesh"];
     read(mesh_section, "resolution_upfactor", config.resolution_upfactor);
     read(mesh_section, "radius_factor", config.radius_factor);
+    read(mesh_section, "marker_stride", config.marker_stride);
 
     if (config.resolution_upfactor <= 0) {
         throw std::runtime_error("mesh.resolution_upfactor must be positive");
+    }
+
+    if (config.marker_stride <= 0) {
+        throw std::runtime_error("mesh.marker_stride must be positive");
     }
 
     return config;
@@ -365,6 +371,7 @@ int main(int argc, char** argv) {
             auto reconstructor = SurfaceReconstructor{};
             reconstructor.resolution_upfactor = config.resolution_upfactor;
             reconstructor.radius_factor = config.radius_factor;
+            reconstructor.marker_stride = config.marker_stride;
 
             Eigen::MatrixXf vertices;
             Eigen::MatrixXi faces;

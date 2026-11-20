@@ -197,6 +197,15 @@ void Visualizer::draw_controls() {
 
         ImGui::InputFloat("Particle radius factor",
                           &surface_reconstructor_.radius_factor);
+
+        if (ImGui::SliderInt("Marker stride",
+                             &surface_reconstructor_.marker_stride, 1, 32)) {
+            surface_reconstructor_.marker_stride =
+                std::max(surface_reconstructor_.marker_stride, 1);
+            // Rebuild right away so strides can be compared while paused.
+            update_mesh();
+        }
+        ImGui::TextDisabled("Use every n-th marker for the surface");
     }
 
     // Physics
