@@ -1,7 +1,6 @@
 #pragma once
 
-#include "simulation/mesh.hpp"
-#include "simulation/simulation.hpp"
+#include "runners.hpp"
 
 // forward declaration
 struct Simulation;
@@ -18,11 +17,16 @@ struct Visualizer {
     void run();
 
    private:
-    Simulation& sim_;
-    std::unique_ptr<Mesh> mesh_ptr;
+    // UI settings are separate from the worker-owned live simulation.
+    SimulationSettings settings_;
+    std::filesystem::path mesh_path_;
+    std::size_t generation_ = 0;
+    std::shared_ptr<const SimulationSnapshot> snapshot_;
+    std::shared_ptr<const MeshSnapshot> mesh_snapshot_;
+    SimulationRunner simulation_;
+    MeshBuilderRunner mesh_builder_;
 
     bool running_ = false;
-    int steps_per_frame_ = 1;
 
     int resolution_upfactor = 2;
     float radius_factor = 1.5f;
@@ -30,11 +34,9 @@ struct Visualizer {
     void init();
     void update();
     void reset();
-    void step();
     void callback();
     void draw_controls();
     void load_mesh(std::filesystem::path);
-    void save_mesh();
     void update_particles();
     void update_grid(bool rebuild = false);
     void update_mesh();
