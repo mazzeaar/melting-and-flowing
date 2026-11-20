@@ -29,6 +29,8 @@ class SimulationRunner {
     // Runs between timesteps, including while paused. Capture inputs by value.
     // Future heat/laser inputs can use this same path to modify the live grid.
     void edit(std::function<void(Simulation&)> command);
+    void configure_statistics(bool enabled, int sample_every,
+                              bool force = false);
     auto latest() -> std::shared_ptr<const SimulationSnapshot>;
 
    private:
@@ -39,6 +41,11 @@ class SimulationRunner {
     bool initialized_ = false;                         // worker only
     std::size_t generation_ = 0;                       // worker only
     std::shared_ptr<const MeshSnapshot> source_mesh_;  // worker only
+
+    bool statistics_enabled_ = true;  // worker only
+    int statistics_every_ = 5;
+    bool statistics_force_ = false;
+    std::shared_ptr<const StatisticsSnapshot> statistics_;
 
     std::mutex mutex_;
     std::condition_variable_any wake_;

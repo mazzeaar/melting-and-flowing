@@ -41,6 +41,7 @@ void SimulationRunner::reset(std::filesystem::path path,
             source_mesh_ = std::make_shared<MeshSnapshot>(
                 MeshSnapshot{generation, 0, mesh->vertices, mesh->faces});
             generation_ = generation;
+            statistics_.reset();
             initialized_ = true;
         });
     }
@@ -53,6 +54,15 @@ void SimulationRunner::edit(std::function<void(Simulation&)> command) {
         commands_.push_back(std::move(command));
     }
     wake_.notify_one();
+}
+
+void SimulationRunner::configure_statistics(bool enabled, int sample_every,
+                                            bool force) {
+    edit([this, enabled, sample_every, force](Simulation&) {
+        statistics_enabled_ = enabled;
+        statistics_every_ = std::max(1, sample_every);
+        statistics_force_ |= force;
+    });
 }
 
 auto SimulationRunner::latest() -> std::shared_ptr<const SimulationSnapshot> {
@@ -116,6 +126,20 @@ void SimulationRunner::run(std::stop_token stop) {
 }
 
 void SimulationRunner::publish() {
+    // Only the worker reads the live grid. Sampling happens after full steps,
+    // independently of how often the UI polls the latest snapshot.
+    if (statistics_enabled_ &&
+        (!statistics_ || statistics_force_ ||
+         sim_.step_count - statistics_->step >=
+             static_cast<std::size_t>(statistics_every_))) {
+        statistics_ = std::make_shared<StatisticsSnapshot>(StatisticsSnapshot{
+            sim_.time, sim_.step_count,
+            GridStatistics::compute(
+                sim_.grid, sim_.settings.physics.density,
+                Eigen::Vector3f(0, sim_.settings.physics.gravity, 0))});
+    }
+    statistics_force_ = false;
+
     auto snapshot = std::make_shared<SimulationSnapshot>(SimulationSnapshot{
         .generation = generation_,
         .step = sim_.step_count,
@@ -124,6 +148,7 @@ void SimulationRunner::publish() {
                  sim_.grid.cell_state},
         .velocity = {},
         .particles = {sim_.particles.positions},
+        .statistics = statistics_,
         .source_mesh = source_mesh_,
     });
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "grid_stats_panel.hpp"
 #include "runners.hpp"
 
 // forward declaration
@@ -25,6 +26,8 @@ struct Visualizer {
     std::shared_ptr<const MeshSnapshot> mesh_snapshot_;
     SimulationRunner simulation_;
     MeshBuilderRunner mesh_builder_;
+
+    GridStatisticsPanel grid_stats_;
 
     int resolution_upfactor = 2;
     float radius_factor = 1.5f;

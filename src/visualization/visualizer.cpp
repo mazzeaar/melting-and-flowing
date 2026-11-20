@@ -90,6 +90,7 @@ void Visualizer::callback() {
     // Poll only: these calls never wait for a timestep or mesh to finish.
     update();
     draw_controls();
+    grid_stats_.draw(simulation_);
 }
 
 void Visualizer::draw_controls() {
@@ -332,6 +333,7 @@ void Visualizer::update() {
         snapshot != snapshot_) {
         const bool rebuild = !snapshot_;
         snapshot_ = std::move(snapshot);
+        grid_stats_.sample(snapshot_->statistics);
         if (rebuild && snapshot_->source_mesh) {
             const auto& source = *snapshot_->source_mesh;
             polyscope::registerSurfaceMesh("Mesh", source.vertices,
@@ -432,6 +434,7 @@ void Visualizer::reset() {
     polyscope::removePointCloud("Particles", false);
     polyscope::removeVolumeGrid("Fluid Grid", false);
     simulation_.reset(mesh_path_, settings_, ++generation_);
+    grid_stats_.reset(simulation_);
 }
 
 }  // namespace visualization

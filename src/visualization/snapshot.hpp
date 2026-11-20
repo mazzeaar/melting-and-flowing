@@ -5,6 +5,8 @@
 #include <memory>
 #include <simulation/grid.hpp>
 
+#include "simulation/grid_stats.hpp"
+
 struct GridSnapshot {
     Grid::Config config;
 
@@ -29,6 +31,12 @@ struct MeshSnapshot {
     Eigen::MatrixXi faces;
 };
 
+struct StatisticsSnapshot {
+    double time;
+    std::size_t step;
+    GridStatistics stats;
+};
+
 struct SimulationSnapshot {
     // Changes on reset/load, so results from the old simulation can be ignored.
     std::size_t generation{};
@@ -38,6 +46,7 @@ struct SimulationSnapshot {
     GridSnapshot grid;
     VelocitySnapshot velocity;
     ParticleSnapshot particles;
+    std::shared_ptr<const StatisticsSnapshot> statistics;
     // Loaded once per reset; keeps the optional original-mesh display
     // available.
     std::shared_ptr<const MeshSnapshot> source_mesh;
