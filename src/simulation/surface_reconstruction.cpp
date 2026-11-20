@@ -3,7 +3,6 @@
 #include <igl/marching_cubes.h>
 
 #include <algorithm>
-#include <cmath>
 
 void SurfaceReconstructor::reconstruct(const Eigen::MatrixXf& points,
                                        const Grid::Config& config,
@@ -67,19 +66,35 @@ void SurfaceReconstructor::reconstruct(const Eigen::MatrixXf& points,
         lo = lo.cwiseMax(Eigen::Vector3i::Zero());
         hi = hi.cwiseMin(node_counts - Eigen::Vector3i::Ones());
 
+        const Eigen::Vector3f offset = min_corner - point;
+
         // Mesh cells around particles
         for (int c = lo.z(); c <= hi.z(); ++c) {
+            const float dz = offset.z() + node_spacing.z() * c;
+            const float dz_sq = dz * dz;
+            if (dz_sq >= kernel_radius_sq) {
+                continue;
+            }
+
             for (int b = lo.y(); b <= hi.y(); ++b) {
+                const float dy = offset.y() + node_spacing.y() * b;
+                const float dyz_sq = dz_sq + dy * dy;
+                if (dyz_sq >= kernel_radius_sq) {
+                    continue;
+                }
+
+                const auto row = node_index(0, b, c);
+
                 for (int a = lo.x(); a <= hi.x(); ++a) {
-                    const Eigen::Vector3f node = node_position(a, b, c);
-                    const float dist_sq = (node - point).squaredNorm();
+                    const float dx = offset.x() + node_spacing.x() * a;
+                    const float dist_sq = dyz_sq + dx * dx;
                     if (dist_sq >= kernel_radius_sq) {
                         continue;
                     }
 
                     const float k = kernel(dist_sq * inv_kernel_radius_sq);
 
-                    const auto n = node_index(a, b, c);
+                    const auto n = row + a;
                     weight_sum(n) += k;
                     weighted_pos.row(n) += k * point.transpose();
                 }
