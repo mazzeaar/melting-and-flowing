@@ -26,10 +26,11 @@ struct Visualizer {
     SimulationRunner simulation_;
     MeshBuilderRunner mesh_builder_;
 
-    bool running_ = false;
-
     int resolution_upfactor = 2;
     float radius_factor = 1.5f;
+    int marker_stride = 1;
+
+    bool running_ = false;
 
     void init();
     void update();

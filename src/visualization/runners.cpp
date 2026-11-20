@@ -1,9 +1,6 @@
 #include "runners.hpp"
 
-#include <igl/marching_cubes.h>
-
 #include <algorithm>
-#include <cmath>
 #include <utility>
 
 SimulationRunner::SimulationRunner(Simulation& sim)
@@ -155,11 +152,12 @@ MeshBuilderRunner::MeshBuilderRunner()
 
 void MeshBuilderRunner::request(
     std::shared_ptr<const SimulationSnapshot> snapshot, int resolution_upfactor,
-    float radius_factor) {
+    float radius_factor, int marker_stride) {
     {
         std::lock_guard lock(mutex_);
-        pending_ = Job{std::move(snapshot), std::max(1, resolution_upfactor),
-                       std::max(0.01f, radius_factor)};
+        pending_ =
+            Job{std::move(snapshot), std::max(1, resolution_upfactor),
+                std::max(0.01f, radius_factor), std::max(1, marker_stride)};
     }
     wake_.notify_one();
 }
@@ -194,121 +192,15 @@ void MeshBuilderRunner::run(std::stop_token stop) {
 }
 
 auto MeshBuilderRunner::build(const Job& job) -> MeshSnapshot {
-    // Surface reconstruction after Zhu & Bridson 2005, "Animating Sand as a
-    // Fluid", eq. 7-10:
-
-    // Potential speedups:
-    // - Look only at cells with SURFACE (would require cell -> particles
-    // mapping)
-    // - Skip cells where cellstate = FULL
-
-    // Config values (move to settings later)
-
-    const auto& points = job.snapshot->particles.positions;
-    const auto& config = job.snapshot->grid.config;
-    const Eigen::Vector3f min_corner = config.min_corner();
-
-    const Eigen::Vector3f node_spacing =
-        config.cell_size() / static_cast<float>(job.resolution_upfactor);
-    const Eigen::Vector3i node_counts =
-        config.extents() * job.resolution_upfactor + Eigen::Vector3i::Ones();
-
-    const int nx = node_counts.x();
-    const int ny = node_counts.y();
-    const int nz = node_counts.z();
-    const int n_nodes = nx * ny * nz;
-
-    auto kernel = [](float s) {
-        return std::max(0.f, std::pow(1.f - std::pow(s, 2.f), 3.f));
-    };
-
-    auto node_index = [&](int a, int b, int c) {
-        return a + nx * (b + ny * c);
-    };
-
-    auto node_position = [&](int a, int b, int c) -> Eigen::Vector3f {
-        return min_corner + node_spacing.cwiseProduct(
-                                Eigen::Vector3i(a, b, c).cast<float>());
-    };
-
-    const float particle_radius = job.radius_factor * node_spacing.maxCoeff();
-    const float kernel_radius = 2.f * particle_radius;
-
-    // Splat every particle into the fine grid nodes within kernel_radius
-    Eigen::VectorXf weight_sum = Eigen::VectorXf::Zero(n_nodes);
-    Eigen::MatrixXf weighted_pos = Eigen::MatrixXf::Zero(n_nodes, 3);
-
-    for (Eigen::Index i = 0; i < points.rows(); ++i) {
-        const Eigen::Vector3f point = points.row(i).transpose();
-
-        // Range of node indices within kernel_radius, clamped to the grid
-        const Eigen::Vector3f local = point - min_corner;
-        Eigen::Vector3i lo =
-            ((local.array() - kernel_radius) / node_spacing.array())
-                .ceil()
-                .cast<int>()
-                .matrix();
-        Eigen::Vector3i hi =
-            ((local.array() + kernel_radius) / node_spacing.array())
-                .floor()
-                .cast<int>()
-                .matrix();
-        lo = lo.cwiseMax(Eigen::Vector3i::Zero());
-        hi = hi.cwiseMin(node_counts - Eigen::Vector3i::Ones());
-
-        // Mesh cells around particles
-        for (int c = lo.z(); c <= hi.z(); ++c) {
-            for (int b = lo.y(); b <= hi.y(); ++b) {
-                for (int a = lo.x(); a <= hi.x(); ++a) {
-                    const Eigen::Vector3f node = node_position(a, b, c);
-                    const float k =
-                        kernel((node - point).norm() / kernel_radius);
-                    if (k == 0.f) {
-                        continue;
-                    }
-
-                    const auto n = node_index(a, b, c);
-                    weight_sum(n) += k;
-                    weighted_pos.row(n) += k * point.transpose();
-                }
-            }
-        }
-    }
-
-    Eigen::VectorXf phi(n_nodes);
-    Eigen::MatrixXf node_positions(n_nodes, 3);
-
-    for (int c = 0; c < nz; ++c) {
-        for (int b = 0; b < ny; ++b) {
-            for (int a = 0; a < nx; ++a) {
-                const auto n = node_index(a, b, c);
-                const Eigen::Vector3f x = node_position(a, b, c);
-                node_positions.row(n) = x.transpose();
-
-                // Outermost layer is forced outside to close mesh
-                const bool on_boundary = a == 0 || b == 0 || c == 0 ||
-                                         a == nx - 1 || b == ny - 1 ||
-                                         c == nz - 1;
-
-                // No particle within kernel_radius -> outside
-                if (on_boundary || weight_sum(n) == 0.f) {
-                    phi(n) = kernel_radius;
-                    continue;
-                }
-
-                const Eigen::Vector3f x_bar =
-                    weighted_pos.row(n).transpose() / weight_sum(n);
-
-                phi(n) = (x - x_bar).norm() - particle_radius;
-            }
-        }
-    }
+    surface_reconstructor_.resolution_upfactor = job.resolution_upfactor;
+    surface_reconstructor_.radius_factor = job.radius_factor;
+    surface_reconstructor_.marker_stride = job.marker_stride;
 
     Eigen::MatrixXf vertices;
     Eigen::MatrixXi faces;
-    igl::marching_cubes(phi, node_positions, static_cast<unsigned>(nx),
-                        static_cast<unsigned>(ny), static_cast<unsigned>(nz),
-                        0.f, vertices, faces);
+    surface_reconstructor_.reconstruct(job.snapshot->particles.positions,
+                                       job.snapshot->grid.config, vertices,
+                                       faces);
 
     return {job.snapshot->generation, job.snapshot->step, std::move(vertices),
             std::move(faces)};

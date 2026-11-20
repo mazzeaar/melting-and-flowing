@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "simulation/simulation.hpp"
+#include "simulation/surface_reconstruction.hpp"
 #include "snapshot.hpp"
 
 // While this runner exists, only its worker may access Simulation.
@@ -57,7 +58,8 @@ class MeshBuilderRunner {
     MeshBuilderRunner& operator=(const MeshBuilderRunner&) = delete;
 
     void request(std::shared_ptr<const SimulationSnapshot> snapshot,
-                 int resolution_upfactor, float radius_factor);
+                 int resolution_upfactor, float radius_factor,
+                 int marker_stride);
     auto latest() -> std::shared_ptr<const MeshSnapshot>;
 
    private:
@@ -65,9 +67,12 @@ class MeshBuilderRunner {
         std::shared_ptr<const SimulationSnapshot> snapshot;
         int resolution_upfactor;
         float radius_factor;
+        int marker_stride;
     };
     void run(std::stop_token stop);
-    static auto build(const Job& job) -> MeshSnapshot;
+    auto build(const Job& job) -> MeshSnapshot;
+
+    SurfaceReconstructor surface_reconstructor_;  // worker only
 
     std::mutex mutex_;
     std::condition_variable_any wake_;

@@ -16,3 +16,8 @@ reference_viscosity = 1e-6
 
 [initialization]
 particle_count = 20000
+
+[mesh]
+resolution_upfactor = 2
+radius_factor = 1.5
+marker_stride = 2

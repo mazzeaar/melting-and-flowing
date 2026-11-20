@@ -185,6 +185,11 @@ void Visualizer::draw_controls() {
         mesh_changed |=
             ImGui::InputFloat("Particle radius factor", &radius_factor);
         radius_factor = std::max(0.01f, radius_factor);
+
+        mesh_changed |=
+            ImGui::SliderInt("Marker stride", &marker_stride, 1, 32);
+        marker_stride = std::max(marker_stride, 1);
+        ImGui::TextDisabled("Use every n-th marker for the surface");
     }
 
     // Physics
@@ -282,7 +287,8 @@ void Visualizer::draw_controls() {
         });
     }
     if (mesh_changed && snapshot_) {
-        mesh_builder_.request(snapshot_, resolution_upfactor, radius_factor);
+        mesh_builder_.request(snapshot_, resolution_upfactor, radius_factor,
+                              marker_stride);
     }
     if (snapshot_) {
         const auto& grid = snapshot_->grid;
@@ -335,7 +341,8 @@ void Visualizer::update() {
         update_grid(rebuild);
         update_particles();
         if (rebuild) polyscope::view::resetCameraToHomeView();
-        mesh_builder_.request(snapshot_, resolution_upfactor, radius_factor);
+        mesh_builder_.request(snapshot_, resolution_upfactor, radius_factor,
+                              marker_stride);
         const auto limit = settings_.solver.max_steps;
         if (limit != 0 && snapshot_->step >= limit) running_ = false;
     }
