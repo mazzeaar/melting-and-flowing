@@ -2,6 +2,7 @@
 
 #include "simulation/mesh.hpp"
 #include "simulation/simulation.hpp"
+#include "simulation/surface_reconstruction.hpp"
 
 // forward declaration
 struct Simulation;
@@ -19,13 +20,11 @@ struct Visualizer {
 
    private:
     Simulation& sim_;
+    SurfaceReconstructor surface_reconstructor_;
     std::unique_ptr<Mesh> mesh_ptr;
 
     bool running_ = false;
     int steps_per_frame_ = 1;
-
-    int resolution_upfactor = 2;
-    float radius_factor = 1.5f;
 
     void init();
     void update();

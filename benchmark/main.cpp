@@ -16,10 +16,14 @@
 
 #include "simulation/settings.hpp"
 #include "simulation/simulation.hpp"
+#include "simulation/surface_reconstruction.hpp"
 
 struct BenchConfig {
     SimulationSettings sim_settings;
     std::filesystem::path mesh_file;
+
+    int resolution_upfactor = SurfaceReconstructor{}.resolution_upfactor;
+    float radius_factor = SurfaceReconstructor{}.radius_factor;
 
     std::size_t num_steps = 0;
     std::size_t warmup_runs = 5;
@@ -109,23 +113,61 @@ auto load_config(const std::filesystem::path& path) -> BenchConfig {
     read(init, "mesh_padding", s.initialization.mesh_padding);
     read(init, "samples_per_cell_axis", s.initialization.samples_per_cell_axis);
 
+    // Surface reconstruction.
+    const auto mesh_section = toml["mesh"];
+    read(mesh_section, "resolution_upfactor", config.resolution_upfactor);
+    read(mesh_section, "radius_factor", config.radius_factor);
+
+    if (config.resolution_upfactor <= 0) {
+        throw std::runtime_error("mesh.resolution_upfactor must be positive");
+    }
+
     return config;
 }
 
 struct AverageResult {
     using Benchmark = benchmark::SolverBenchmark;
     using Duration = Benchmark::Duration;
+    using Series = std::map<std::string, std::vector<double>>;
 
     std::vector<double> cfl_substeps;
-    std::map<std::string, std::vector<double>> steps;
-    std::map<std::string, std::vector<double>> cfl;
+    Series steps;
+    Series mesh;
+    Series cfl;
     std::size_t runs = 0;
 
     static double ms(Duration d) {
         return std::chrono::duration<double, std::milli>(d).count();
     }
 
-    void add(const Benchmark& bench) {
+    // Sums measurements that are recorded exactly once per full timestep.
+    static void add_per_step(const benchmark::BenchmarkBase& bench,
+                             std::size_t n, Series& out) {
+        for (const auto& m : bench.measurements) {
+            if (m.starts.size() != n || m.ends.size() != n) {
+                throw std::runtime_error("Invalid step measurements: " +
+                                         m.name);
+            }
+
+            auto& values = out[m.name];
+
+            if (values.empty()) {
+                values.resize(n, 0.0);
+            }
+
+            for (std::size_t i = 0; i < n; ++i) {
+                values[i] += ms(m.ends[i] - m.starts[i]);
+            }
+        }
+
+        // Ensure all measured runs contain the same operations.
+        if (out.size() != bench.measurements.size()) {
+            throw std::runtime_error("Inconsistent benchmark operations");
+        }
+    }
+
+    void add(const Benchmark& bench,
+             const benchmark::BenchmarkBase& mesh_bench) {
         const auto n = bench.cfl_substeps.size();
 
         if (runs == 0) {
@@ -143,21 +185,10 @@ struct AverageResult {
         }
 
         // Full-step measurements.
-        for (const auto& m : bench.measurements) {
-            if (m.starts.size() != n || m.ends.size() != n) {
-                throw std::runtime_error("Invalid step measurements");
-            }
+        add_per_step(bench, n, steps);
 
-            auto& values = steps[m.name];
-
-            if (values.empty()) {
-                values.resize(n, 0.0);
-            }
-
-            for (std::size_t i = 0; i < n; ++i) {
-                values[i] += ms(m.ends[i] - m.starts[i]);
-            }
-        }
+        // Surface reconstruction, run once after every full timestep.
+        add_per_step(mesh_bench, n, mesh);
 
         // CFL measurements, averaged within each full timestep.
         std::size_t offset = 0;
@@ -196,8 +227,7 @@ struct AverageResult {
         }
 
         // Ensure all measured runs contain the same operations.
-        if (steps.size() != bench.measurements.size() ||
-            cfl.size() != bench.cfl.measurements.size()) {
+        if (cfl.size() != bench.cfl.measurements.size()) {
             throw std::runtime_error("Inconsistent benchmark operations");
         }
 
@@ -215,6 +245,10 @@ struct AverageResult {
             std::print(" {:>20}", name);
         }
 
+        for (const auto& [name, _] : mesh) {
+            std::print(" {:>20}", name);
+        }
+
         for (const auto& [name, _] : cfl) {
             std::print(" {:>20}", name + " (CFL)");
         }
@@ -225,6 +259,10 @@ struct AverageResult {
             std::print("{:>6} {:>10.2f}", i, cfl_substeps[i] / runs);
 
             for (const auto& [name, values] : steps) {
+                std::print(" {:>20.3f}", values[i] / runs);
+            }
+
+            for (const auto& [name, values] : mesh) {
                 std::print(" {:>20.3f}", values[i] / runs);
             }
 
@@ -260,6 +298,10 @@ struct AverageResult {
             file << ',' << name << "_ms";
         }
 
+        for (const auto& [name, _] : mesh) {
+            file << ',' << name << "_ms";
+        }
+
         for (const auto& [name, _] : cfl) {
             file << ',' << name << "_cfl_ms";
         }
@@ -271,6 +313,10 @@ struct AverageResult {
             file << i << ',' << cfl_substeps[i] / runs;
 
             for (const auto& [name, values] : steps) {
+                file << ',' << values[i] / runs;
+            }
+
+            for (const auto& [name, values] : mesh) {
                 file << ',' << values[i] / runs;
             }
 
@@ -316,13 +362,25 @@ int main(int argc, char** argv) {
 
             sim.load_mesh(mesh);
 
+            auto reconstructor = SurfaceReconstructor{};
+            reconstructor.resolution_upfactor = config.resolution_upfactor;
+            reconstructor.radius_factor = config.radius_factor;
+
+            Eigen::MatrixXf vertices;
+            Eigen::MatrixXi faces;
+
             for (std::size_t step = 0; step < config.num_steps; ++step) {
                 sim.step(config.sim_settings.solver.dt);
+
+                // Timed outside Solver::step so total_ms stays comparable.
+                reconstructor.reconstruct(sim.particles.positions,
+                                          sim.grid.config(), vertices, faces);
             }
 
             // Discard warm-up measurements.
             if (!warmup) {
-                averages.add(sim.solver.get_benchmark());
+                averages.add(sim.solver.get_benchmark(),
+                             reconstructor.benchmark);
             }
         }
 
