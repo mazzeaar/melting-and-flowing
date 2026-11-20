@@ -33,7 +33,8 @@ void SurfaceReconstructor::reconstruct(const Eigen::MatrixXf& points,
     const int n_nodes = nx * ny * nz;
 
     auto kernel = [](float s) {
-        return std::max(0.f, std::pow(1.f - std::pow(s, 2.f), 3.f));
+        auto a = 1.f - s * s;
+        return std::max(0.f, a * a * a);
     };
 
     auto node_index = [&](int a, int b, int c) {
