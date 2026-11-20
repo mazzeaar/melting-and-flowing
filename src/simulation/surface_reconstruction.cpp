@@ -13,13 +13,6 @@ void SurfaceReconstructor::reconstruct(const Eigen::MatrixXf& points,
     // Surface reconstruction after Zhu & Bridson 2005, "Animating Sand as a
     // Fluid", eq. 7-10:
 
-    // Potential speedups:
-    // - Look only at cells with SURFACE (would require cell -> particles
-    // mapping)
-    // - Skip cells where cellstate = FULL
-
-    // Config values (move to settings later)
-
     const Eigen::Vector3f min_corner = config.min_corner();
 
     const Eigen::Vector3f node_spacing =
@@ -32,8 +25,8 @@ void SurfaceReconstructor::reconstruct(const Eigen::MatrixXf& points,
     const int nz = node_counts.z();
     const int n_nodes = nx * ny * nz;
 
-    auto kernel = [](float s) {
-        auto a = 1.f - s * s;
+    auto kernel = [](float s2) {
+        auto a = 1.f - s2;
         return std::max(0.f, a * a * a);
     };
 
@@ -48,6 +41,8 @@ void SurfaceReconstructor::reconstruct(const Eigen::MatrixXf& points,
 
     const float particle_radius = radius_factor * node_spacing.maxCoeff();
     const float kernel_radius = 2.f * particle_radius;
+    const float kernel_radius_sq = kernel_radius * kernel_radius;
+    const float inv_kernel_radius_sq = 1.f / kernel_radius_sq;
 
     // Splat every particle into the fine grid nodes within kernel_radius
     benchmark.tick("mesh_splat");
@@ -77,11 +72,12 @@ void SurfaceReconstructor::reconstruct(const Eigen::MatrixXf& points,
             for (int b = lo.y(); b <= hi.y(); ++b) {
                 for (int a = lo.x(); a <= hi.x(); ++a) {
                     const Eigen::Vector3f node = node_position(a, b, c);
-                    const float k =
-                        kernel((node - point).norm() / kernel_radius);
-                    if (k == 0.f) {
+                    const float dist_sq = (node - point).squaredNorm();
+                    if (dist_sq >= kernel_radius_sq) {
                         continue;
                     }
+
+                    const float k = kernel(dist_sq * inv_kernel_radius_sq);
 
                     const auto n = node_index(a, b, c);
                     weight_sum(n) += k;
