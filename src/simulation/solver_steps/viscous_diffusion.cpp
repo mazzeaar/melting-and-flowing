@@ -1,3 +1,4 @@
+#include "../boundary_conditions.hpp"
 #include "../solver.hpp"
 
 // Step 2: Viscous Diffusion
@@ -17,10 +18,8 @@ void triplets(auto& entries, const Solver::Config& cfg, const WallCondition bc,
               const Axis ax, const float nu, const int i, const int j,
               const int k) {
     const auto gc = cfg.grid.config();
-    const auto& state = cfg.grid.cell_state;
     const float dt = cfg.settings.dt;
 
-    const auto ex = gc.extents();
     const auto h = gc.cell_size();
 
     const float dx = h.x();
@@ -32,36 +31,15 @@ void triplets(auto& entries, const Solver::Config& cfg, const WallCondition bc,
     const float cz = dt * nu / (dz * dz);
 
     const auto get_face = [&](int i0, int j0, int k0) -> FaceState {
-        int i1 = i0 + (ax == Axis::X ? -1 : 0);
-        int j1 = j0 + (ax == Axis::Y ? -1 : 0);
-        int k1 = k0 + (ax == Axis::Z ? -1 : 0);
-
-        if (i0 < 0 || i0 >= ex.x() || j0 < 0 || j0 >= ex.y() || k0 < 0 ||
-            k0 >= ex.z() || i1 < 0 || j1 < 0 || k1 < 0) {
+        const auto face =
+            boundary::face_state(cfg.grid, std::to_underlying(ax), i0, j0, k0);
+        if (face == CellState::SOLID) {
             return FaceState::Solid;
         }
-
-        auto cs0 = state[gc.cell(i0, j0, k0)];
-        auto cs1 = state[gc.cell(i1, j1, k1)];
-
-        if (cs0 == CellState::UNKNOWN || cs1 == CellState::UNKNOWN) {
-            return FaceState::Unknown;
-        }
-
-        if (cs0 == CellState::SOLID || cs1 == CellState::SOLID) {
-            return FaceState::Solid;
-        }
-
-        if (cs0 == CellState::FULL || cs1 == CellState::FULL ||
-            cs0 == CellState::SURFACE || cs1 == CellState::SURFACE) {
+        if (face == CellState::FULL) {
             return FaceState::Fluid;
         }
-
-        if (cs0 == CellState::AIR && cs1 == CellState::AIR) {
-            return FaceState::Air;
-        }
-
-        return FaceState::Unknown;
+        return FaceState::Air;
     };
 
     const auto row = [&](int i0, int j0, int k0) -> std::size_t {
@@ -156,9 +134,9 @@ void Solver::diffuse_velocity(Solver::Config cfg) {
     trip_w.reserve(7 * gc.size_w());
 
     const auto prepare = [&](auto& entries, Eigen::Vector3i ex, Axis ax) {
-        for (int i = 0; i < ex.x(); ++i) {
+        for (int k = 0; k < ex.z(); ++k) {
             for (int j = 0; j < ex.y(); ++j) {
-                for (int k = 0; k < ex.z(); ++k) {
+                for (int i = 0; i < ex.x(); ++i) {
                     // Populate RHS Vectors
                     // const auto r = row(gc, ax, i, j, k);
                     // rhs(r) = field[r];

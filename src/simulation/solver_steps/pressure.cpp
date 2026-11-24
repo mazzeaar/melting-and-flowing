@@ -1,6 +1,7 @@
 
 #include <cstddef>
 
+#include "../boundary_conditions.hpp"
 #include "../solver.hpp"
 #include "Eigen/Core"
 #include "Eigen/SparseCholesky"
@@ -35,14 +36,18 @@ void Solver::solve_pressure(Config cfg) {
     triplets.reserve(7 * gc.size() + 1);
     Eigen::VectorX<float_type> rhs(gc.size());
 
-    for (int i = 0; i < nx; i++) {
+    std::vector<boundary::PressureCell> pinned(gc.size());
+    boundary::pressure_reference_cells(cfg.grid, pinned);
+
+    for (int k = 0; k < nz; k++) {
         for (int j = 0; j < ny; j++) {
-            for (int k = 0; k < nz; k++) {
+            for (int i = 0; i < nx; i++) {
                 auto r = gc.cell(i, j, k);
 
                 // This is the u_solid implicitely
                 // Furthermore, we keep empty rows for easier mapping back
-                if (c[r] != CellState::FULL && c[r] != CellState::SURFACE) {
+                if (!boundary::is_liquid(c[r]) ||
+                    pinned[r] == boundary::PressureCell::Pinned) {
                     triplets.emplace_back(r, r, 1.0);
                     rhs(r) = 0;
                     continue;
@@ -60,11 +65,15 @@ void Solver::solve_pressure(Config cfg) {
                 std::size_t n_fluid = 0;
                 auto couple = [&](int ni, int nj, int nk) {
                     const auto n = gc.cell(ni, nj, nk);
-                    if (c[n] == CellState::SOLID) {
+                    const auto state =
+                        boundary::cell_state(cfg.grid, ni, nj, nk);
+                    if (state == CellState::SOLID) {
                         return;
                     }
+
                     n_fluid++;
-                    if (c[n] == CellState::AIR) {
+                    if (state == CellState::AIR ||
+                        pinned[n] == boundary::PressureCell::Pinned) {
                         return;
                     }
                     triplets.emplace_back(r, n, -1);

@@ -1,6 +1,7 @@
 #include <Eigen/IterativeLinearSolvers>
 #include <Eigen/Sparse>
 
+#include "../boundary_conditions.hpp"
 #include "../solver.hpp"
 
 // Step 6: Temperature diffusion
@@ -33,9 +34,19 @@ void Solver::diffuse_temperature(Config cfg) {
             for (int i = 0; i < nx; ++i) {
                 const auto r = gc.cell(i, j, k);
 
+                // solid walls, retain value
+                if (boundary::cell_state(grid, i, j, k) == CellState::SOLID) {
+                    temperature_triplets.emplace_back(r, r, 1.f);
+                    continue;
+                }
+
                 float_t diag = 1.0;
 
                 const auto neighbour = [&](int ni, int nj, int nk, float_t a) {
+                    if (boundary::cell_state(grid, ni, nj, nk) ==
+                        CellState::SOLID) {
+                        return;
+                    }
                     temperature_triplets.emplace_back(r, gc.cell(ni, nj, nk),
                                                       -a);
                     diag += a;
