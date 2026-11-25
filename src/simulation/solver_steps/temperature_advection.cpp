@@ -14,11 +14,11 @@ void Solver::advect_temperature(Solver::Config cfg) {
     const auto dt = cfg.settings.dt;
     const auto origin = gc.min_corner();
 
-    assert(buff_cell.size() == gc.size());
+    assert(buff_mat_cell1.size() == gc.size());
 
-    for (int i = 0; i < ex.x(); ++i) {
+    for (int k = 0; k < ex.z(); ++k) {
         for (int j = 0; j < ex.y(); ++j) {
-            for (int k = 0; k < ex.z(); ++k) {
+            for (int i = 0; i < ex.x(); ++i) {
                 const auto idx = gc.cell(i, j, k);
 
                 if (grid.cell_state[idx] != CellState::FULL &&

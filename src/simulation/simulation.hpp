@@ -76,6 +76,8 @@ struct Simulation {
         });
 
         update_cell_states(grid, particles.positions);
+        // chaddy said to add this, idk if its needed?
+        enforce_velocity_boundaries(grid);
 
         time += dt;
         ++step_count;

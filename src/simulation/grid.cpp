@@ -6,6 +6,7 @@
 #include <queue>
 #include <utility>
 
+#include "boundary_conditions.hpp"
 #include "core/exception.hpp"
 #include "simulation/settings.hpp"
 
@@ -128,7 +129,11 @@ auto Grid::contains_point(const Eigen::Vector3f& point) const -> bool {
 }
 
 auto Grid::index_of(const Eigen::Vector3f& point) const -> std::size_t {
-    assert(grid.contains_point(point));
+    assert(contains_point(point));
+    if (!contains_point(point)) {
+        throw core::Error("point ({}, {}, {}) is not included in the grid!",
+                          point.x(), point.y(), point.z());
+    }
 
     const auto& cfg = config();
 
@@ -148,36 +153,33 @@ auto Grid::index_of(const Eigen::Vector3f& point) const -> std::size_t {
 void enforce_velocity_boundaries(Grid& grid) {
     const auto gc = grid.config();
     const Eigen::Vector3i n = gc.extents();
-    const auto solid = [&](int i, int j, int k) {
-        return i < 0 || j < 0 || k < 0 || i >= n.x() || j >= n.y() ||
-               k >= n.z() ||
-               grid.cell_state[gc.cell(i, j, k)] == CellState::SOLID;
-    };
 
+    // enforce boundary 0 boundary conditions across the domain walls
     for (int k = 0; k < n.z(); ++k) {
         for (int j = 0; j < n.y(); ++j) {
             for (int i = 0; i <= n.x(); ++i) {
-                if (solid(i - 1, j, k) || solid(i, j, k)) {
+                if (boundary::face_state(grid, 0, i + 1, j + 1, k + 1) ==
+                    CellState::SOLID) {
                     grid.u[gc.u(i + 1, j + 1, k + 1)] = 0;
                 }
             }
         }
     }
-
     for (int k = 0; k < n.z(); ++k) {
         for (int j = 0; j <= n.y(); ++j) {
             for (int i = 0; i < n.x(); ++i) {
-                if (solid(i, j - 1, k) || solid(i, j, k)) {
+                if (boundary::face_state(grid, 1, i + 1, j + 1, k + 1) ==
+                    CellState::SOLID) {
                     grid.v[gc.v(i + 1, j + 1, k + 1)] = 0;
                 }
             }
         }
     }
-
     for (int k = 0; k <= n.z(); ++k) {
         for (int j = 0; j < n.y(); ++j) {
             for (int i = 0; i < n.x(); ++i) {
-                if (solid(i, j, k - 1) || solid(i, j, k)) {
+                if (boundary::face_state(grid, 2, i + 1, j + 1, k + 1) ==
+                    CellState::SOLID) {
                     grid.w[gc.w(i + 1, j + 1, k + 1)] = 0;
                 }
             }
@@ -238,7 +240,7 @@ void mark_surface_cells(Grid& grid) {
     const auto gc = grid.config();
     const auto ex = gc.extents();
 
-    static constexpr const std::array<Eigen::Vector3i, 6> neighbour_offsets = {
+    static const std::array<Eigen::Vector3i, 6> neighbour_offsets = {
         {
             {1, 0, 0},
             {-1, 0, 0},
@@ -423,7 +425,7 @@ void update_cell_states(Grid& grid, const Eigen::MatrixXf& surface_particles) {
     // #####################################################################
     // #####################################################################
     // #####################################################################
-    static constexpr std::array<Eigen::Vector3i, 6> dirs = {
+    static const std::array<Eigen::Vector3i, 6> dirs = {
         {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}},
     };
 

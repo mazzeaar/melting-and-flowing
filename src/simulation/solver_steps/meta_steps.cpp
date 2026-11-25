@@ -38,15 +38,6 @@ void Solver::prepare(Solver::Config cfg) {
     }
 
     {  // each staggered component has its own number of unknowns
-        // viscosity_rhs_u.resize(nu);
-        // viscosity_rhs_v.resize(nv);
-        // viscosity_rhs_w.resize(nw);
-        // viscosity_u2.resize(nu);
-        // viscosity_v2.resize(nv);
-        // viscosity_w2.resize(nw);
-        // viscosity_triplets_u.reserve(7 * nu);
-        // viscosity_triplets_v.reserve(7 * nv);
-        // viscosity_triplets_w.reserve(7 * nw);
         viscosity_A_u.resize(nu, nu);
         viscosity_A_v.resize(nv, nv);
         viscosity_A_w.resize(nw, nw);
@@ -124,6 +115,9 @@ void Solver::step(Solver::Config cfg) {
 
         remaining -= dt;
         ++substeps;
+
+        // chaddy said to add this, i dont see a difference with/without it
+        enforce_velocity_boundaries(cfg.grid);
     }
 
     benchmark.end_step(substeps);
@@ -134,12 +128,14 @@ void Solver::single_step(Solver::Config cfg) {
     // Step 1: Advection and external forces
     benchmark.tick_cfl("advect_velocity");
     advect_velocity(cfg);
+    enforce_velocity_boundaries(cfg.grid);
     benchmark.tock_cfl("advect_velocity");
 
     // Step 2: Viscous diffusion
     // u2 - dt * nu * ∇²u2 = u1
     benchmark.tick_cfl("diffuse_velocity");
     diffuse_velocity(cfg);
+    enforce_velocity_boundaries(cfg.grid);
     benchmark.tock_cfl("diffuse_velocity");
 
     // Step 3: Pressure Poisson equation
@@ -152,6 +148,7 @@ void Solver::single_step(Solver::Config cfg) {
     // u_new = u2 - (dt / rho) * ∇p
     benchmark.tick_cfl("project_velocity");
     project_velocity(cfg);
+    enforce_velocity_boundaries(cfg.grid);
     benchmark.tock_cfl("project_velocity");
 
     // Step 5: Temperature advection
