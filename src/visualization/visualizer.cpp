@@ -76,6 +76,73 @@ void apply_temperature_brush(Grid& grid, const Eigen::Vector3f& center,
     }
 }
 
+// Value of the cell containing each point (points outside are clamped).
+auto sample_cells(const Grid::Config& cfg, const Eigen::VectorXf& values,
+                  const Eigen::MatrixXf& points) -> std::vector<float> {
+    const Eigen::Vector3f min = cfg.min_corner();
+    const Eigen::Vector3f h = cfg.cell_size();
+    const Eigen::Vector3i last = cfg.extents() - Eigen::Vector3i::Ones();
+
+    std::vector<float> out(static_cast<std::size_t>(points.rows()));
+    for (Eigen::Index p = 0; p < points.rows(); ++p) {
+        const Eigen::Vector3f point = points.row(p).transpose();
+        const Eigen::Vector3i ijk = (point - min)
+                                        .cwiseQuotient(h)
+                                        .array()
+                                        .floor()
+                                        .cast<int>()
+                                        .matrix()
+                                        .cwiseMax(0)
+                                        .cwiseMin(last);
+        out[static_cast<std::size_t>(p)] =
+            values[cfg.cell(ijk.x(), ijk.y(), ijk.z())];
+    }
+    return out;
+}
+
+// updateData() keeps the old color range, so it is set explicitly from the
+// current data. Widened to at least 1 K so a uniform field still maps cleanly.
+auto temperature_range(const Eigen::VectorXf& temperature)
+    -> std::pair<double, double> {
+    if (temperature.size() == 0) return {0.0, 1.0};
+    const double lo = temperature.minCoeff();
+    const double hi = temperature.maxCoeff();
+    return {lo, std::max(hi, lo + 1.0)};
+}
+
+// Hides the preview before picking, otherwise the pick hits the brush sphere.
+auto pick_scene_under_mouse() -> polyscope::PickResult {
+    if (polyscope::hasPointCloud("Brush")) {
+        polyscope::getPointCloud("Brush")->setEnabled(false);
+    }
+    const auto mouse_pos = ImGui::GetMousePos();
+    return polyscope::pickAtScreenCoords(glm::vec2(mouse_pos.x, mouse_pos.y));
+}
+
+void update_brush_preview(bool visible, const polyscope::PickResult& hit,
+                          float radius, BrushMode mode) {
+    if (!visible || !hit.isHit) {
+        if (polyscope::hasPointCloud("Brush")) {
+            polyscope::getPointCloud("Brush")->setEnabled(false);
+        }
+        return;
+    }
+
+    const std::vector<glm::vec3> center{hit.position};
+    auto* brush = polyscope::hasPointCloud("Brush")
+                      ? polyscope::getPointCloud("Brush")
+                      : polyscope::registerPointCloud("Brush", center);
+    brush->updatePointPositions(center);
+    brush->setPointRadius(radius, false);
+    switch (mode) {
+    case BrushMode::Increase: brush->setPointColor({0.9f, 0.25f, 0.15f}); break;
+    case BrushMode::Decrease: brush->setPointColor({0.2f, 0.45f, 0.95f}); break;
+    case BrushMode::Stabilize: brush->setPointColor({0.7f, 0.7f, 0.7f}); break;
+    }
+    brush->setTransparency(0.35f);
+    brush->setEnabled(true);
+}
+
 }  // namespace
 
 template <typename F> void handle_errors(F&& fn) {
@@ -369,18 +436,39 @@ void Visualizer::draw_controls() {
 
 void Visualizer::update_particles() {
     const auto& points = snapshot_->particles.positions;
+    const auto& grid = snapshot_->grid;
 
+    polyscope::PointCloud* cloud = nullptr;
     if (polyscope::hasPointCloud("Particles")) {
-        auto* cloud = polyscope::getPointCloud("Particles");
+        cloud = polyscope::getPointCloud("Particles");
 
         if (cloud->nPoints() == static_cast<std::size_t>(points.rows())) {
             cloud->updatePointPositions(points);
-            return;
+        } else {
+            cloud = nullptr;
         }
     }
 
-    auto* cloud = polyscope::registerPointCloud("Particles", points);
-    cloud->setPointRadius(0.002);
+    if (!cloud) {
+        // Re-registering replaces the cloud and drops its quantities.
+        cloud = polyscope::registerPointCloud("Particles", points);
+        cloud->setPointRadius(0.002);
+    }
+
+    // Each particle shows the temperature of the cell it sits in.
+    const auto temperature =
+        sample_cells(grid.config, grid.temperature, points);
+    auto* quantity =
+        cloud->getStructureQuantity<polyscope::PointCloudScalarQuantity>(
+            "Temperature");
+    if (quantity) {
+        quantity->updateData(temperature);
+    } else {
+        quantity = cloud->addScalarQuantity("Temperature", temperature);
+        quantity->setColorMap("coolwarm");
+        quantity->setEnabled(true);
+    }
+    quantity->setMapRange(temperature_range(grid.temperature));
 }
 
 void Visualizer::update_mesh() {
@@ -395,22 +483,26 @@ void Visualizer::update_mesh() {
 }
 
 void Visualizer::update() {
+    // Pick once per frame in melt mode: used for the hover preview and for
+    // painting.
+    polyscope::PickResult world_pos;
+    if (melt_mode_) world_pos = pick_scene_under_mouse();
+
+    BrushMode mode = BrushMode::Increase;
+    if (ImGui::IsKeyDown(ImGuiKey_LeftAlt)) {
+        mode = BrushMode::Decrease;
+    } else if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) {
+        mode = BrushMode::Stabilize;
+    } else {
+        mode = BrushMode::Increase;
+    }
+
+    update_brush_preview(melt_mode_ && !ImGui::GetIO().WantCaptureMouse,
+                         world_pos, brush_radius_, mode);
+
     if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && melt_mode_) {
         polyscope::options::doDefaultMouseInteraction = false;
         auto grid = simulation_.latest()->grid.temperature;
-
-        auto mouse_pos = ImGui::GetMousePos();
-        auto world_pos =
-            polyscope::pickAtScreenCoords(glm::vec2(mouse_pos.x, mouse_pos.y));
-
-        BrushMode mode = BrushMode::Increase;
-        if (ImGui::IsKeyDown(ImGuiKey_LeftAlt)) {
-            mode = BrushMode::Decrease;
-        } else if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) {
-            mode = BrushMode::Stabilize;
-        } else {
-            mode = BrushMode::Increase;
-        }
 
         if (world_pos.isHit) {
             const Eigen::Vector3f center(world_pos.position.x,
@@ -486,13 +578,16 @@ void Visualizer::update_grid(bool rebuild) {
 
     // Polyscope requires X to vary fastest.
     std::vector<float> values(cfg.size());
+    std::vector<float> temperature(cfg.size());
 
     for (int k = 0; k < nz; ++k) {
         for (int j = 0; j < ny; ++j) {
             for (int i = 0; i < nx; ++i) {
                 const auto index = i + nx * (j + ny * k);
+                const auto cell = cfg.cell(i, j, k);
 
-                values[index] = static_cast<float>(state[cfg.cell(i, j, k)]);
+                values[index] = static_cast<float>(state[cell]);
+                temperature[index] = grid.temperature[cell];
             }
         }
     }
@@ -522,6 +617,19 @@ void Visualizer::update_grid(bool rebuild) {
         // Only enable when first created.
         quantity->setEnabled(false);
     }
+
+    auto* temperature_quantity =
+        ps_grid->getStructureQuantity<polyscope::VolumeGridCellScalarQuantity>(
+            "Temperature");
+    if (temperature_quantity) {
+        temperature_quantity->updateData(temperature);
+    } else {
+        temperature_quantity =
+            ps_grid->addCellScalarQuantity("Temperature", temperature);
+        temperature_quantity->setColorMap("coolwarm");
+        temperature_quantity->setEnabled(false);
+    }
+    temperature_quantity->setMapRange(temperature_range(grid.temperature));
 }
 
 void Visualizer::reset() {
