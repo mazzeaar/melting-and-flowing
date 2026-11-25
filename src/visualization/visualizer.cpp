@@ -8,6 +8,7 @@
 
 #include <Eigen/Core>
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <filesystem>
 #include <format>
@@ -16,12 +17,66 @@
 #include <vector>
 
 #include "core/exception.hpp"
+#include "glm/ext/vector_float2.hpp"
 #include "polyscope/messages.h"
+#include "polyscope/options.h"
+#include "polyscope/pick.h"
 #include "polyscope/surface_mesh.h"
 #include "simulation/grid.hpp"
 #include "simulation/simulation.hpp"
 
 namespace visualization {
+
+namespace {
+
+enum class BrushMode { Increase, Decrease, Stabilize };
+
+void apply_temperature_brush(Grid& grid, const Eigen::Vector3f& center,
+                             float radius, float amount, BrushMode mode,
+                             float base_temperature) {
+    const auto& cfg = grid.config();
+    const Eigen::Vector3f min = cfg.min_corner();
+    const Eigen::Vector3f h = cfg.cell_size();
+    const Eigen::Vector3i last = cfg.extents() - Eigen::Vector3i::Ones();
+
+    const auto to_cell = [&](const Eigen::Vector3f& p) -> Eigen::Vector3i {
+        return (p - min).cwiseQuotient(h).array().floor().cast<int>().matrix();
+    };
+
+    const Eigen::Vector3f r = Eigen::Vector3f::Constant(radius);
+    const Eigen::Vector3i lo = to_cell(center - r).cwiseMax(0);
+    const Eigen::Vector3i hi = to_cell(center + r).cwiseMin(last);
+    const Eigen::Vector3i center_cell = to_cell(center);
+
+    const float sigma = radius / 3.0f;
+    const float inv_two_sigma_sq = 1.0f / (2.0f * sigma * sigma);
+    const float radius_sq = radius * radius;
+
+    for (int k = lo.z(); k <= hi.z(); ++k) {
+        for (int j = lo.y(); j <= hi.y(); ++j) {
+            for (int i = lo.x(); i <= hi.x(); ++i) {
+                const Eigen::Vector3i ijk(i, j, k);
+                const Eigen::Vector3f cell_center =
+                    min + (ijk.cast<float>() + Eigen::Vector3f::Constant(0.5f))
+                              .cwiseProduct(h);
+                const float d2 = (cell_center - center).squaredNorm();
+                if (d2 > radius_sq && ijk != center_cell) continue;
+
+                const float delta = amount * std::exp(-d2 * inv_two_sigma_sq);
+                float& t = grid.t[cfg.cell(i, j, k)];
+                switch (mode) {
+                case BrushMode::Increase: t += delta; break;
+                case BrushMode::Decrease: t = std::max(0.0f, t - delta); break;
+                case BrushMode::Stabilize:
+                    t += std::clamp(base_temperature - t, -delta, delta);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+}  // namespace
 
 template <typename F> void handle_errors(F&& fn) {
     try {
@@ -130,6 +185,18 @@ void Visualizer::draw_controls() {
     }
 
     ImGui::Separator();
+
+    if (ImGui::RadioButton("Melt Mode", melt_mode_)) {
+        melt_mode_ = !melt_mode_;
+    }
+    ImGui::SameLine();
+    ImGui::SliderFloat("Base temperature", &base_temperature_kelvin, 0, 3000);
+    ImGui::SliderFloat("Brush radius (m)", &brush_radius_, 0.001f, 1.0f, "%.4f",
+                       ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("Brush strength (K/s)", &brush_strength_, 1.0f, 10000.0f,
+                       "%.1f", ImGuiSliderFlags_Logarithmic);
+    brush_radius_ = std::max(brush_radius_, 1e-6f);
+    brush_strength_ = std::max(brush_strength_, 0.0f);
 
     // Grid
     if (ImGui::CollapsingHeader("Grid")) {
@@ -328,6 +395,41 @@ void Visualizer::update_mesh() {
 }
 
 void Visualizer::update() {
+    if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && melt_mode_) {
+        polyscope::options::doDefaultMouseInteraction = false;
+        auto grid = simulation_.latest()->grid.temperature;
+
+        auto mouse_pos = ImGui::GetMousePos();
+        auto world_pos =
+            polyscope::pickAtScreenCoords(glm::vec2(mouse_pos.x, mouse_pos.y));
+
+        BrushMode mode = BrushMode::Increase;
+        if (ImGui::IsKeyDown(ImGuiKey_LeftAlt)) {
+            mode = BrushMode::Decrease;
+        } else if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) {
+            mode = BrushMode::Stabilize;
+        } else {
+            mode = BrushMode::Increase;
+        }
+
+        if (world_pos.isHit) {
+            const Eigen::Vector3f center(world_pos.position.x,
+                                         world_pos.position.y,
+                                         world_pos.position.z);
+            // Scale by frame time to avoid framerate dependend speed
+            const float amount = brush_strength_ * ImGui::GetIO().DeltaTime;
+            const float radius = brush_radius_;
+            const float base = base_temperature_kelvin;
+            simulation_.edit(
+                [center, radius, amount, mode, base](Simulation& sim) {
+                    apply_temperature_brush(sim.grid, center, radius, amount,
+                                            mode, base);
+                });
+        }
+    } else {
+        polyscope::options::doDefaultMouseInteraction = true;
+    }
+
     auto snapshot = simulation_.latest();
     if (snapshot && snapshot->generation == generation_ &&
         snapshot != snapshot_) {

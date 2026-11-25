@@ -33,6 +33,11 @@ struct Visualizer {
     float radius_factor = 1.5f;
     int marker_stride = 1;
 
+    bool melt_mode_ = false;
+    float base_temperature_kelvin = 300.f;
+    // Melt brush: world-space radius (m) and peak rate at the center (K/s).
+    float brush_radius_ = 0.1f;
+    float brush_strength_ = 500.f;
     bool running_ = false;
 
     void init();
