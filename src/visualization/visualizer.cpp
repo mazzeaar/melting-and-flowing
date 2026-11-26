@@ -8,6 +8,7 @@
 
 #include <Eigen/Core>
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <filesystem>
 #include <format>
@@ -16,12 +17,133 @@
 #include <vector>
 
 #include "core/exception.hpp"
+#include "glm/ext/vector_float2.hpp"
 #include "polyscope/messages.h"
+#include "polyscope/options.h"
+#include "polyscope/pick.h"
 #include "polyscope/surface_mesh.h"
 #include "simulation/grid.hpp"
 #include "simulation/simulation.hpp"
 
 namespace visualization {
+
+namespace {
+
+enum class BrushMode { Increase, Decrease, Stabilize };
+
+void apply_temperature_brush(Grid& grid, const Eigen::Vector3f& center,
+                             float radius, float amount, BrushMode mode,
+                             float base_temperature) {
+    const auto& cfg = grid.config();
+    const Eigen::Vector3f min = cfg.min_corner();
+    const Eigen::Vector3f h = cfg.cell_size();
+    const Eigen::Vector3i last = cfg.extents() - Eigen::Vector3i::Ones();
+
+    const auto to_cell = [&](const Eigen::Vector3f& p) -> Eigen::Vector3i {
+        return (p - min).cwiseQuotient(h).array().floor().cast<int>().matrix();
+    };
+
+    const Eigen::Vector3f r = Eigen::Vector3f::Constant(radius);
+    const Eigen::Vector3i lo = to_cell(center - r).cwiseMax(0);
+    const Eigen::Vector3i hi = to_cell(center + r).cwiseMin(last);
+    const Eigen::Vector3i center_cell = to_cell(center);
+
+    const float sigma = radius / 3.0f;
+    const float inv_two_sigma_sq = 1.0f / (2.0f * sigma * sigma);
+    const float radius_sq = radius * radius;
+
+    for (int k = lo.z(); k <= hi.z(); ++k) {
+        for (int j = lo.y(); j <= hi.y(); ++j) {
+            for (int i = lo.x(); i <= hi.x(); ++i) {
+                const Eigen::Vector3i ijk(i, j, k);
+                const Eigen::Vector3f cell_center =
+                    min + (ijk.cast<float>() + Eigen::Vector3f::Constant(0.5f))
+                              .cwiseProduct(h);
+                const float d2 = (cell_center - center).squaredNorm();
+                if (d2 > radius_sq && ijk != center_cell) continue;
+
+                const float delta = amount * std::exp(-d2 * inv_two_sigma_sq);
+                float& t = grid.t[cfg.cell(i, j, k)];
+                switch (mode) {
+                case BrushMode::Increase: t += delta; break;
+                case BrushMode::Decrease: t = std::max(0.0f, t - delta); break;
+                case BrushMode::Stabilize:
+                    t += std::clamp(base_temperature - t, -delta, delta);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+// Value of the cell containing each point (points outside are clamped).
+auto sample_cells(const Grid::Config& cfg, const Eigen::VectorXf& values,
+                  const Eigen::MatrixXf& points) -> std::vector<float> {
+    const Eigen::Vector3f min = cfg.min_corner();
+    const Eigen::Vector3f h = cfg.cell_size();
+    const Eigen::Vector3i last = cfg.extents() - Eigen::Vector3i::Ones();
+
+    std::vector<float> out(static_cast<std::size_t>(points.rows()));
+    for (Eigen::Index p = 0; p < points.rows(); ++p) {
+        const Eigen::Vector3f point = points.row(p).transpose();
+        const Eigen::Vector3i ijk = (point - min)
+                                        .cwiseQuotient(h)
+                                        .array()
+                                        .floor()
+                                        .cast<int>()
+                                        .matrix()
+                                        .cwiseMax(0)
+                                        .cwiseMin(last);
+        out[static_cast<std::size_t>(p)] =
+            values[cfg.cell(ijk.x(), ijk.y(), ijk.z())];
+    }
+    return out;
+}
+
+// updateData() keeps the old color range, so it is set explicitly from the
+// current data. Widened to at least 1 K so a uniform field still maps cleanly.
+auto temperature_range(const Eigen::VectorXf& temperature)
+    -> std::pair<double, double> {
+    if (temperature.size() == 0) return {0.0, 1.0};
+    const double lo = temperature.minCoeff();
+    const double hi = temperature.maxCoeff();
+    return {lo, std::max(hi, lo + 1.0)};
+}
+
+// Hides the preview before picking, otherwise the pick hits the brush sphere.
+auto pick_scene_under_mouse() -> polyscope::PickResult {
+    if (polyscope::hasPointCloud("Brush")) {
+        polyscope::getPointCloud("Brush")->setEnabled(false);
+    }
+    const auto mouse_pos = ImGui::GetMousePos();
+    return polyscope::pickAtScreenCoords(glm::vec2(mouse_pos.x, mouse_pos.y));
+}
+
+void update_brush_preview(bool visible, const polyscope::PickResult& hit,
+                          float radius, BrushMode mode) {
+    if (!visible || !hit.isHit) {
+        if (polyscope::hasPointCloud("Brush")) {
+            polyscope::getPointCloud("Brush")->setEnabled(false);
+        }
+        return;
+    }
+
+    const std::vector<glm::vec3> center{hit.position};
+    auto* brush = polyscope::hasPointCloud("Brush")
+                      ? polyscope::getPointCloud("Brush")
+                      : polyscope::registerPointCloud("Brush", center);
+    brush->updatePointPositions(center);
+    brush->setPointRadius(radius, false);
+    switch (mode) {
+    case BrushMode::Increase: brush->setPointColor({0.9f, 0.25f, 0.15f}); break;
+    case BrushMode::Decrease: brush->setPointColor({0.2f, 0.45f, 0.95f}); break;
+    case BrushMode::Stabilize: brush->setPointColor({0.7f, 0.7f, 0.7f}); break;
+    }
+    brush->setTransparency(0.35f);
+    brush->setEnabled(true);
+}
+
+}  // namespace
 
 template <typename F> void handle_errors(F&& fn) {
     try {
@@ -130,6 +252,18 @@ void Visualizer::draw_controls() {
     }
 
     ImGui::Separator();
+
+    if (ImGui::RadioButton("Melt Mode", melt_mode_)) {
+        melt_mode_ = !melt_mode_;
+    }
+    ImGui::SameLine();
+    ImGui::SliderFloat("Base temperature", &base_temperature_kelvin, 0, 3000);
+    ImGui::SliderFloat("Brush radius (m)", &brush_radius_, 0.001f, 1.0f, "%.4f",
+                       ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("Brush strength (K/s)", &brush_strength_, 1.0f, 10000.0f,
+                       "%.1f", ImGuiSliderFlags_Logarithmic);
+    brush_radius_ = std::max(brush_radius_, 1e-6f);
+    brush_strength_ = std::max(brush_strength_, 0.0f);
 
     // Grid
     if (ImGui::CollapsingHeader("Grid")) {
@@ -302,18 +436,39 @@ void Visualizer::draw_controls() {
 
 void Visualizer::update_particles() {
     const auto& points = snapshot_->particles.positions;
+    const auto& grid = snapshot_->grid;
 
+    polyscope::PointCloud* cloud = nullptr;
     if (polyscope::hasPointCloud("Particles")) {
-        auto* cloud = polyscope::getPointCloud("Particles");
+        cloud = polyscope::getPointCloud("Particles");
 
         if (cloud->nPoints() == static_cast<std::size_t>(points.rows())) {
             cloud->updatePointPositions(points);
-            return;
+        } else {
+            cloud = nullptr;
         }
     }
 
-    auto* cloud = polyscope::registerPointCloud("Particles", points);
-    cloud->setPointRadius(0.002);
+    if (!cloud) {
+        // Re-registering replaces the cloud and drops its quantities.
+        cloud = polyscope::registerPointCloud("Particles", points);
+        cloud->setPointRadius(0.002);
+    }
+
+    // Each particle shows the temperature of the cell it sits in.
+    const auto temperature =
+        sample_cells(grid.config, grid.temperature, points);
+    auto* quantity =
+        cloud->getStructureQuantity<polyscope::PointCloudScalarQuantity>(
+            "Temperature");
+    if (quantity) {
+        quantity->updateData(temperature);
+    } else {
+        quantity = cloud->addScalarQuantity("Temperature", temperature);
+        quantity->setColorMap("coolwarm");
+        quantity->setEnabled(true);
+    }
+    quantity->setMapRange(temperature_range(grid.temperature));
 }
 
 void Visualizer::update_mesh() {
@@ -328,6 +483,45 @@ void Visualizer::update_mesh() {
 }
 
 void Visualizer::update() {
+    // Pick once per frame in melt mode: used for the hover preview and for
+    // painting.
+    polyscope::PickResult world_pos;
+    if (melt_mode_) world_pos = pick_scene_under_mouse();
+
+    BrushMode mode = BrushMode::Increase;
+    if (ImGui::IsKeyDown(ImGuiKey_LeftAlt)) {
+        mode = BrushMode::Decrease;
+    } else if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) {
+        mode = BrushMode::Stabilize;
+    } else {
+        mode = BrushMode::Increase;
+    }
+
+    update_brush_preview(melt_mode_ && !ImGui::GetIO().WantCaptureMouse,
+                         world_pos, brush_radius_, mode);
+
+    if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && melt_mode_) {
+        polyscope::options::doDefaultMouseInteraction = false;
+        auto grid = simulation_.latest()->grid.temperature;
+
+        if (world_pos.isHit) {
+            const Eigen::Vector3f center(world_pos.position.x,
+                                         world_pos.position.y,
+                                         world_pos.position.z);
+            // Scale by frame time to avoid framerate dependend speed
+            const float amount = brush_strength_ * ImGui::GetIO().DeltaTime;
+            const float radius = brush_radius_;
+            const float base = base_temperature_kelvin;
+            simulation_.edit(
+                [center, radius, amount, mode, base](Simulation& sim) {
+                    apply_temperature_brush(sim.grid, center, radius, amount,
+                                            mode, base);
+                });
+        }
+    } else {
+        polyscope::options::doDefaultMouseInteraction = true;
+    }
+
     auto snapshot = simulation_.latest();
     if (snapshot && snapshot->generation == generation_ &&
         snapshot != snapshot_) {
@@ -384,13 +578,16 @@ void Visualizer::update_grid(bool rebuild) {
 
     // Polyscope requires X to vary fastest.
     std::vector<float> values(cfg.size());
+    std::vector<float> temperature(cfg.size());
 
     for (int k = 0; k < nz; ++k) {
         for (int j = 0; j < ny; ++j) {
             for (int i = 0; i < nx; ++i) {
                 const auto index = i + nx * (j + ny * k);
+                const auto cell = cfg.cell(i, j, k);
 
-                values[index] = static_cast<float>(state[cfg.cell(i, j, k)]);
+                values[index] = static_cast<float>(state[cell]);
+                temperature[index] = grid.temperature[cell];
             }
         }
     }
@@ -420,6 +617,19 @@ void Visualizer::update_grid(bool rebuild) {
         // Only enable when first created.
         quantity->setEnabled(false);
     }
+
+    auto* temperature_quantity =
+        ps_grid->getStructureQuantity<polyscope::VolumeGridCellScalarQuantity>(
+            "Temperature");
+    if (temperature_quantity) {
+        temperature_quantity->updateData(temperature);
+    } else {
+        temperature_quantity =
+            ps_grid->addCellScalarQuantity("Temperature", temperature);
+        temperature_quantity->setColorMap("coolwarm");
+        temperature_quantity->setEnabled(false);
+    }
+    temperature_quantity->setMapRange(temperature_range(grid.temperature));
 }
 
 void Visualizer::reset() {
